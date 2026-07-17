@@ -31,7 +31,7 @@ Built automatically by `../../start.sh` (in a Maven container) if the JAR is
 missing. To build manually, use either option below (run from this connector
 directory, `gateway-connectors/homegrown`).
 
-**Option A — local Maven** (if Maven + JDK 11 are installed; no Docker needed):
+**Option A — local Maven** (if Maven is installed):
 
 ```bash
 mvn -q -B -pl components/homegrown.gw.manager -am package -DskipTests
@@ -56,9 +56,6 @@ WSO2 API Manager 4.7.x install, wherever it runs (container, VM, bare metal,
 Kubernetes). Four steps: install the bundle → allowlist the type → restart →
 register the gateway. Below, `<APIM_HOME>` is your product root (e.g.
 `/opt/wso2am-4.7.0` or `/home/wso2carbon/wso2am-4.7.0`).
-
-> Version note: build with **JDK 11**; the connector targets APIM `9.32.74`
-> (API Manager 4.7.x). Match your APIM version if you upgrade.
 
 ### 1. Install the bundle into `dropins/`
 

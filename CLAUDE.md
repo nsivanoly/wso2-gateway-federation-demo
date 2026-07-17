@@ -71,7 +71,7 @@ gateway isn't already serving. Consoles: dashboard `:3000`, Publisher/DevPortal
   `GatewayAgentConfiguration` (declares the type + env config fields),
   `GatewayDeployer` (push: deploy/undeploy), `FederatedAPIDiscovery` (pull:
   reverse discovery). Packages: `org.wso2.homegrown.client`,
-  `org.wso2.konglocal.client`. Built against APIM `9.32.74`, JDK 11 source level.
+  `org.wso2.konglocal.client`.
 - **Two things make a custom type usable:** (1) the bundle in `dropins/`, and
   (2) the type in the `[apim] gateway_type` allowlist in `deployment.toml`.
   `control-plane/Dockerfile` **injects** `HomeGrown,KongLocal` into the stock
@@ -139,8 +139,7 @@ push/pull, lifecycle, and discovery behaviour.
 - Update the relevant README/docs when behaviour changes; keep `.env.sample`
   complete.
 
-## Environment notes
+## Repo
 
-- Repo: `git@github.com:nsivanoly/wso2-gateway-federation-demo.git` (branch `main`).
+- Remote: `git@github.com:nsivanoly/wso2-gateway-federation-demo.git` (branch `main`).
 - Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
-- The 4.7.0-alpine base bundles Java 25; connectors build with JDK 11 source level.
