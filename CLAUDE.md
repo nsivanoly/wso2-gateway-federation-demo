@@ -105,7 +105,7 @@ push/pull, lifecycle, and discovery behaviour.
 - **Change a connector** (`gateway-connectors/*`): rebuild the JAR, then rebuild
   the control-plane image (`docker compose build control-plane`) and recreate it.
   Build options:
-  - local Maven (fast; this machine has JDK 26 + a populated `~/.m2`):
+  - local Maven (if installed):
     `cd gateway-connectors/<c> && mvn -q -B -pl components/<c>.gw.manager -am package -DskipTests`
   - or Maven-in-Docker (see connector READMEs). A stale `target/*.jar` is reused —
     delete it (or rebuild) to pick up source changes.
@@ -119,16 +119,15 @@ push/pull, lifecycle, and discovery behaviour.
 
 - **No persistent volumes** for WSO2 (H2 in-container) or Kong (Postgres, no named
   volume); the mock-gateway registry is **in-memory**. Recreating those containers
-  (or a Colima/VM restart) loses state → re-run provisioning.
+  (or a Docker VM restart) loses state → re-run provisioning.
 - **Discovery lock:** editing a gateway env via the Admin API mid-discovery can
   orphan the lock in `AM_TASK_LOCK`; discovery silently stalls. Fix: restart the
   control plane (`docker compose restart control-plane` — preserves H2).
 - **First cold connector build** downloads WSO2 deps (slow); the Maven cache
-  volume `gateway-federation-m2` (Docker) or `~/.m2` (local) makes reruns fast.
+  volume `gateway-federation-m2` (Docker) or the local Maven cache makes reruns fast.
 - **Admin UI field types:** gateway-env config fields render a dropdown only with
   `type: "options"` (values as option objects). The options widget doesn't
   pre-select from `defaultValue`, so the connector default applies when unset.
-- **Colima** is the Docker backend here; if `docker` is down, `colima start`.
 
 ## Conventions
 

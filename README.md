@@ -35,7 +35,7 @@ behaviour (lifecycle, discovery, known limitations).
 
 ## Prerequisites
 
-- **Docker** + **Docker Compose v2** (tested on Docker Engine / Colima, macOS arm64)
+- **Docker** + **Docker Compose v2** (Docker Engine or Docker Desktop; Linux/macOS, amd64/arm64)
 - ~6 GB memory available to Docker (WSO2 APIM is a large image; first boot ~1–2 min)
 - Free host ports: `9443, 8243, 8280, 8000, 8001, 8002, 8090, 4000, 3000`
 
