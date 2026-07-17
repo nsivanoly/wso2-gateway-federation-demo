@@ -64,6 +64,12 @@ public class KongLocalFederatedAPIDiscovery implements FederatedAPIDiscovery {
     @Override
     public List<DiscoveredAPI> discoverAPI() {
         List<DiscoveredAPI> retrievedAPIs = new ArrayList<>();
+        // Env config "auto_publish": PUBLISH discovered APIs straight to the Dev
+        // Portal, or leave them in CREATED for manual review (default).
+        boolean autoPublish = Boolean.parseBoolean(environment.getAdditionalProperties()
+                .getOrDefault(KongLocalConstants.KONGLOCAL_AUTO_PUBLISH, "false"));
+        String targetStatus = autoPublish
+                ? KongLocalConstants.STATUS_PUBLISHED : KongLocalConstants.STATUS_CREATED;
         try {
             List<JsonObject> services = KongLocalAPIUtil.getServices(adminUrl);
             Map<String, List<JsonObject>> routesByService = KongLocalAPIUtil.getRoutesByService(adminUrl);
@@ -86,6 +92,7 @@ public class KongLocalFederatedAPIDiscovery implements FederatedAPIDiscovery {
                 }
 
                 API api = KongLocalAPIUtil.kongServiceToAPI(service, route, organization, environment);
+                api.setStatus(targetStatus);
                 DiscoveredAPI discoveredAPI = new DiscoveredAPI(api,
                         KongLocalAPIUtil.createReferenceArtifact(service, route));
                 retrievedAPIs.add(discoveredAPI);

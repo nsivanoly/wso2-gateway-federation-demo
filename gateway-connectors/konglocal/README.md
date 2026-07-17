@@ -143,18 +143,27 @@ curl -sk -X POST "$CP/api/am/admin/v4/environments" \
     "mode": "READ_WRITE",
     "apiDiscoveryScheduledWindow": 5,
     "additionalProperties": [
-      { "key": "admin_url", "value": "http://<kong-host>:8001" },
-      { "key": "proxy_url", "value": "http://<kong-host>:8000" },
-      { "key": "stage",     "value": "default" }
+      { "key": "admin_url",    "value": "http://<kong-host>:8001" },
+      { "key": "proxy_url",    "value": "http://<kong-host>:8000" },
+      { "key": "stage",        "value": "default" },
+      { "key": "auto_publish", "value": "false" }
     ],
     "vhosts": [ { "host": "<kong-host>", "httpPort": 8000, "httpsPort": 8443 } ]
   }'
 ```
 
 Config keys this connector understands (declared by
-`KongLocalGatewayConfiguration`): `admin_url`, `proxy_url`, `stage` (optional
-label). `apiDiscoveryScheduledWindow` is the reverse-discovery interval in
-**minutes** (omit or set `0` to disable discovery).
+`KongLocalGatewayConfiguration`, shown in the Admin UI):
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `admin_url` | input | Kong Admin API URL the connector calls to create services/routes |
+| `proxy_url` | input | Kong proxy URL used to build API execution URLs |
+| `stage` | input | Optional free-text label (default `default`) |
+| `auto_publish` | checkbox | **`true`** → discovered APIs are published to the Dev Portal automatically; **`false`** (default) → left in `CREATED` for manual review |
+
+`apiDiscoveryScheduledWindow` is the reverse-discovery interval in **minutes**
+(omit or set `0` to disable discovery).
 
 > **Kong mode:** use **DB-backed** Kong. The connector deploys via the Admin API
 > `/services` + `/routes` CRUD endpoints so multiple APIs coexist. In DB-less

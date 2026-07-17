@@ -82,6 +82,11 @@ public class KongLocalGatewayConfiguration implements GatewayAgentConfiguration 
             "Optional stage label", "default", false,
                 false,
                 Collections.emptyList(), false));
+        configurationDtoList.add(new ConfigurationDto(KongLocalConstants.KONGLOCAL_AUTO_PUBLISH,
+            "Auto-publish discovered APIs", "checkbox",
+            "If enabled, APIs discovered on this gateway are published to the Dev Portal "
+                + "automatically. If disabled, they are left in CREATED for manual review.",
+            "false", false, false, Collections.emptyList(), false));
 
         return configurationDtoList;
     }

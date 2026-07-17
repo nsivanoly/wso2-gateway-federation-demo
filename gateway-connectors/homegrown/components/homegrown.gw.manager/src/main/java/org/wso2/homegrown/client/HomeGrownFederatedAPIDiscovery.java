@@ -63,6 +63,12 @@ public class HomeGrownFederatedAPIDiscovery implements FederatedAPIDiscovery {
     @Override
     public List<DiscoveredAPI> discoverAPI() {
         List<DiscoveredAPI> retrievedAPIs = new ArrayList<>();
+        // Env config "auto_publish": PUBLISH discovered APIs straight to the Dev
+        // Portal, or leave them in CREATED for manual review (default).
+        boolean autoPublish = Boolean.parseBoolean(environment.getAdditionalProperties()
+                .getOrDefault(HomeGrownConstants.HOMEGROWN_AUTO_PUBLISH, "false"));
+        String targetStatus = autoPublish
+                ? HomeGrownConstants.STATUS_PUBLISHED : HomeGrownConstants.STATUS_CREATED;
         try {
             List<JsonObject> services = HomeGrownAPIUtil.getServices(adminUrl);
             for (JsonObject service : services) {
@@ -72,6 +78,7 @@ public class HomeGrownFederatedAPIDiscovery implements FederatedAPIDiscovery {
                     continue;
                 }
                 API api = HomeGrownAPIUtil.homeGrownServiceToAPI(service, route, organization, environment);
+                api.setStatus(targetStatus);
                 DiscoveredAPI discoveredAPI = new DiscoveredAPI(api,
                         HomeGrownAPIUtil.createReferenceArtifact(service, route));
                 retrievedAPIs.add(discoveredAPI);

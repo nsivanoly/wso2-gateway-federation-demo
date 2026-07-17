@@ -46,4 +46,10 @@ public class KongLocalConstants {
     public static final String SANDBOX_ENDPOINTS = "sandbox_endpoints";
     public static final String URL_PROP = "url";
     public static final String DEFAULT_VERSION = "1.0.0";
+
+    // Env config: whether discovered APIs are auto-published to the Dev Portal
+    // (true) or left in CREATED for manual review (false, default).
+    public static final String KONGLOCAL_AUTO_PUBLISH = "auto_publish";
+    public static final String STATUS_PUBLISHED = "PUBLISHED";
+    public static final String STATUS_CREATED = "CREATED";
 }

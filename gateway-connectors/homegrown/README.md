@@ -133,18 +133,27 @@ curl -sk -X POST "$CP/api/am/admin/v4/environments" \
     "mode": "READ_WRITE",
     "apiDiscoveryScheduledWindow": 5,
     "additionalProperties": [
-      { "key": "admin_url", "value": "http://<your-gateway-host>:8090" },
-      { "key": "proxy_url", "value": "http://<your-gateway-host>:8090" },
-      { "key": "stage",     "value": "default" }
+      { "key": "admin_url",    "value": "http://<your-gateway-host>:8090" },
+      { "key": "proxy_url",    "value": "http://<your-gateway-host>:8090" },
+      { "key": "stage",        "value": "default" },
+      { "key": "auto_publish", "value": "false" }
     ],
     "vhosts": [ { "host": "<your-gateway-host>", "httpPort": 8090, "httpsPort": 8091 } ]
   }'
 ```
 
 Config keys this connector understands (declared by
-`HomeGrownGatewayConfiguration`): `admin_url`, `proxy_url`, `stage` (optional
-label). `apiDiscoveryScheduledWindow` is the reverse-discovery interval in
-**minutes** (omit or set `0` to disable discovery).
+`HomeGrownGatewayConfiguration`, shown in the Admin UI):
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `admin_url` | input | Gateway admin API URL the connector calls to deploy/undeploy |
+| `proxy_url` | input | Gateway proxy URL used to build API execution URLs |
+| `stage` | input | Optional free-text label (default `default`) |
+| `auto_publish` | checkbox | **`true`** → discovered APIs are published to the Dev Portal automatically; **`false`** (default) → left in `CREATED` for manual review |
+
+`apiDiscoveryScheduledWindow` is the reverse-discovery interval in **minutes**
+(omit or set `0` to disable discovery).
 
 ### 5. Deploy an API to it
 

@@ -52,4 +52,10 @@ public class HomeGrownConstants {
     // Used to mark APIs deployed by this connector and avoid discovery loops.
     public static final String HOMEGROWN_MANAGED_BY_PROP = "managedBy";
     public static final String HOMEGROWN_MANAGED_BY_VALUE = "wso2-apim-homegrown-connector";
+
+    // Env config: whether discovered APIs are auto-published to the Dev Portal
+    // (true) or left in CREATED for manual review (false, default).
+    public static final String HOMEGROWN_AUTO_PUBLISH = "auto_publish";
+    public static final String STATUS_PUBLISHED = "PUBLISHED";
+    public static final String STATUS_CREATED = "CREATED";
 }
