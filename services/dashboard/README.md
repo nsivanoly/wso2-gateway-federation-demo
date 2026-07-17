@@ -1,11 +1,28 @@
 # dashboard
 
-A live **federation console** over the WSO2 Publisher/Admin REST APIs. It shows
-every API, which gateway hosts it, the original and gateway URLs, a "try it" on
-both, and one-click deploy/remove of the on-demand **template** APIs — the
-showcase for federated discovery.
+A live **federation console** over the WSO2 Publisher/Admin REST APIs **plus the
+live gateway runtimes** (Kong Admin + mock gateway). It shows every API, which
+gateway hosts it, the original and gateway URLs, a "try it" on both, and one-click
+deploy/remove of the on-demand **template** APIs — the showcase for federated
+discovery.
 
 Served at `http://localhost:3000`.
+
+## Federation-state indicators
+
+Each external-gateway API is labelled with its WSO2 ↔ gateway relationship,
+derived by cross-checking WSO2 against the live gateway routes (and the connector
+managed-marker — Kong `wso2-apim-managed` tag / mock `managedBy`):
+
+| Pill | Meaning |
+|------|---------|
+| **⇈ pushed by WSO2** | WSO2 deployed it to the gateway (managed marker present) |
+| **⇩ discovered by WSO2** | created directly on the gateway, then reverse-discovered into WSO2 |
+| **⧗ pending discovery** | on the gateway now, not yet imported by WSO2 (shown immediately, before the next discovery cycle) |
+
+Because the console reads the gateways directly, a route deployed straight to
+Kong/HomeGrown appears right away as *pending discovery*, then flips to
+*discovered by WSO2* once the discovery cycle imports it.
 
 ## Deploy model (important)
 

@@ -46,6 +46,11 @@ instead of the internal synapse manager. Each connector implements:
 - `GatewayDeployer.deploy() / undeploy()` — **push** WSO2 → gateway runtime.
 - `FederatedAPIDiscovery.discoverAPI()` — **pull** gateway → WSO2 (reverse discovery).
 
+Each connector also declares environment config fields (`admin_url`, `proxy_url`,
+`stage`, and an `auto_publish` dropdown that controls whether discovered APIs are
+published to the Dev Portal or left in `CREATED`). See the connector READMEs and
+[federation-semantics.md](federation-semantics.md).
+
 The connector sources live in [`gateway-connectors/`](../gateway-connectors);
 `start.sh` builds them with Maven (in a container) if the JARs are missing.
 

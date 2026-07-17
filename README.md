@@ -169,6 +169,22 @@ customise. **`.env` is never committed.**
 
 ---
 
+## Federation features
+
+- **Bidirectional federation** — WSO2 *pushes* APIs to a gateway (deploy a
+  revision to a federated env) and *discovers* APIs created directly on a gateway
+  (reverse discovery). See [docs/federation-semantics.md](docs/federation-semantics.md).
+- **Live console indicators** — the dashboard labels each external API
+  **⇈ pushed by WSO2**, **⇩ discovered by WSO2**, or **⧗ pending discovery**, and
+  shows gateway-native routes immediately (before discovery imports them).
+- **Auto-publish toggle** — each federated gateway environment has an
+  `auto_publish` option: `true` publishes discovered APIs to the Dev Portal
+  automatically, `false` (default) leaves them in `CREATED` for review.
+- **Discover → publish** — a discovered API already carries a gateway deployment;
+  publishing it (lifecycle change, no re-deploy) surfaces it in the Dev Portal.
+
+---
+
 ## Known limitations
 
 - The mock gateway stores its route registry **in memory**; restarting it drops

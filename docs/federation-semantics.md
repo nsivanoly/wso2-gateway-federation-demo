@@ -33,6 +33,29 @@ Removal from a gateway happens only on **RETIRE** or **API delete**. A bare
 | **Modify** a route           | `isAPIUpdated()` sees the changed reference artifact → WSO2 updates the API |
 | **Delete** a route           | ⚠️ **Not pruned.** Discovery only adds/updates; the WSO2 API lingers as stale (shown deployed) while the runtime 404s |
 
+## Discovered APIs & the Dev Portal
+
+A discovered API is imported into the Publisher in **`CREATED`** lifecycle, but it
+**already carries a gateway deployment** (discovery auto-creates a revision +
+deployment with `displayOnDevportal: true`). So the only thing keeping it out of
+the Dev Portal marketplace is its lifecycle state — one `change-lifecycle`
+**Publish** call surfaces it, with **no re-deploy** (do not re-deploy a discovered
+API; that re-invokes the connector and pushes it back to the gateway).
+
+**Auto-publish toggle.** Both connectors expose an `auto_publish` option on the
+gateway environment (default `false`). It controls the lifecycle the connector
+requests for each discovered API:
+
+| `auto_publish` | Discovered API lands in | Dev Portal |
+|----------------|-------------------------|------------|
+| `false` (default) | `CREATED` | not listed — review then publish manually |
+| `true` | `PUBLISHED` | listed immediately |
+
+This is set on the environment (`additionalProperties.auto_publish`) and applied
+in `FederatedAPIDiscovery.discoverAPI()` via `api.setStatus(...)`, which the
+discovery framework honors. (The connector cannot change lifecycle any other way —
+its only contract is to return discovered metadata.)
+
 ## Key takeaways
 
 - **Push and pull are independent one-way channels.** There is no continuous
