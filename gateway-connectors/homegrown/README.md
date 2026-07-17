@@ -47,41 +47,131 @@ docker run --rm -v "$PWD":/build -v gateway-federation-m2:/root/.m2 -w /build \
 
 Output: `components/homegrown.gw.manager/target/homegrown.gw.manager-*.jar`.
 
-## Manual deploy into `dropins/`
+---
 
-Normally `control-plane/Dockerfile` copies this JAR into the image's
-`repository/components/dropins/` at build time. To iterate on the connector
-without rebuilding the image, drop the freshly built JAR into a **running**
-control-plane container and restart it (OSGi bundles in `dropins/` are resolved
-at server startup, so a restart is required — it is not hot-swapped):
+## Using this connector in your own WSO2 API Manager
+
+This connector is a self-contained OSGi bundle — you can drop it into **any**
+WSO2 API Manager 4.7.x install, wherever it runs (container, VM, bare metal,
+Kubernetes). Four steps: install the bundle → allowlist the type → restart →
+register the gateway. Below, `<APIM_HOME>` is your product root (e.g.
+`/opt/wso2am-4.7.0` or `/home/wso2carbon/wso2am-4.7.0`).
+
+> Version note: build with **JDK 11**; the connector targets APIM `9.32.74`
+> (API Manager 4.7.x). Match your APIM version if you upgrade.
+
+### 1. Install the bundle into `dropins/`
+
+Copy the built JAR to `<APIM_HOME>/repository/components/dropins/`. Pick the
+method for your environment:
 
 ```bash
-# from the repo root, with the stack running
-JAR=$(ls gateway-connectors/homegrown/components/homegrown.gw.manager/target/homegrown.gw.manager-*.jar)
-DROPINS=/home/wso2carbon/wso2am-4.7.0/repository/components/dropins
+# (a) Bare metal / VM — WSO2 stopped or running (restart applied in step 3)
+cp homegrown.gw.manager-*.jar  <APIM_HOME>/repository/components/dropins/
 
-# copy the bundle in (overwrites the baked-in one)
-docker compose cp "$JAR" "control-plane:$DROPINS/"
+# (b) Running Docker container
+docker cp homegrown.gw.manager-*.jar  <container>:<APIM_HOME>/repository/components/dropins/
 
-# restart so OSGi picks up the new bundle
-docker compose restart control-plane
+# (c) Kubernetes pod
+kubectl cp homegrown.gw.manager-*.jar  <namespace>/<pod>:<APIM_HOME>/repository/components/dropins/
 ```
 
-For the `HomeGrown` type to appear in the Admin Portal it must also be in the
-`[apim] gateway_type` allowlist in
-`repository/conf/deployment.toml` (the image injects it via `sed` — see
-`control-plane/Dockerfile`). If you edit that file inside a running container,
-restart the control plane afterward.
+For an **image build** (bake it in), add to your Dockerfile:
 
-> Tip: after a source change, delete the existing `target/*.jar` so `start.sh`
-> rebuilds it, or run the manual build above.
+```dockerfile
+COPY --chown=wso2carbon:wso2 \
+     homegrown.gw.manager-*.jar \
+     ${APIM_HOME}/repository/components/dropins/
+```
 
-## Registration
+### 2. Allowlist the gateway type in `deployment.toml`
 
-The gateway **type** must also appear in the `[apim] gateway_type` allowlist —
-`control-plane/Dockerfile` injects `HomeGrown` into the stock `deployment.toml`.
-Federated environments are registered with `provider: external` (in
-`provisioning/deploy-apis.sh`) so revision deployments dispatch to this connector.
+APIM only shows gateway types listed in `[apim] gateway_type`. Add `HomeGrown`
+to `<APIM_HOME>/repository/conf/deployment.toml` — edit in place (recommended,
+upgrade-safe) rather than shipping a whole file:
+
+```bash
+# append HomeGrown to the existing gateway_type line (idempotent)
+sed -i '/^gateway_type = ".*APIPlatform/ { /HomeGrown/! s/"\s*$/,HomeGrown"/ }' \
+  <APIM_HOME>/repository/conf/deployment.toml
+```
+
+or edit it by hand:
+
+```toml
+[apim]
+gateway_type = "Regular,APK,AWS,Azure,Kong,Envoy,APIPlatform,HomeGrown"
+```
+
+> `deployment.toml` must stay readable/writable by the WSO2 runtime user
+> (usually `wso2carbon`); a root-owned file causes an `AccessDeniedException` at
+> boot. `chown wso2carbon:wso2 deployment.toml` if needed.
+
+### 3. Restart WSO2
+
+OSGi resolves `dropins/` bundles at startup, so a restart is required (not
+hot-swapped): `sh <APIM_HOME>/bin/api-manager.sh` (or restart the
+container/pod). After boot, `HomeGrown` appears in the Admin Portal's gateway
+type dropdown and under `GET /api/am/admin/v4/settings` → `gatewayTypes`.
+
+### 4. Register a gateway environment (Admin REST API)
+
+Create an environment of type `HomeGrown` with **`provider: external`** — that is
+what makes WSO2 dispatch revision deployments to this connector's
+`GatewayDeployer` instead of the internal synapse gateway. Put your gateway's
+reachable URLs in `additionalProperties`:
+
+```bash
+# $TOK = an Admin REST token (scope: apim:admin). $CP = https://<apim-host>:9443
+curl -sk -X POST "$CP/api/am/admin/v4/environments" \
+  -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{
+    "name": "HomeGrownProd",
+    "displayName": "Home-grown Gateway",
+    "provider": "external",
+    "type": "hybrid",
+    "gatewayType": "HomeGrown",
+    "mode": "READ_WRITE",
+    "apiDiscoveryScheduledWindow": 5,
+    "additionalProperties": [
+      { "key": "admin_url", "value": "http://<your-gateway-host>:8090" },
+      { "key": "proxy_url", "value": "http://<your-gateway-host>:8090" },
+      { "key": "stage",     "value": "default" }
+    ],
+    "vhosts": [ { "host": "<your-gateway-host>", "httpPort": 8090, "httpsPort": 8091 } ]
+  }'
+```
+
+Config keys this connector understands (declared by
+`HomeGrownGatewayConfiguration`): `admin_url`, `proxy_url`, `stage` (optional
+label). `apiDiscoveryScheduledWindow` is the reverse-discovery interval in
+**minutes** (omit or set `0` to disable discovery).
+
+### 5. Deploy an API to it
+
+Create the API as an **external-gateway** API of this type (these fields are
+immutable after creation), then deploy a revision to the environment — that call
+invokes the connector and pushes the API to your gateway:
+
+```bash
+# at creation: "gatewayVendor": "external", "gatewayType": "HomeGrown"
+# then: POST /api/am/publisher/v4/apis/{id}/deploy-revision
+#       body: [{ "name": "HomeGrownProd", "vhost": "<your-gateway-host>" }]
+```
+
+See [`provisioning/deploy-apis.sh`](../../provisioning/deploy-apis.sh) for a
+complete, working REST example (create-from-OpenAPI → deploy → publish).
+
+---
+
+## Adapting it to a real gateway
+
+This connector talks to the demo's mock gateway (`/mock/deploy`,
+`/mock/undeploy`, `/mock/registry`). To target a real gateway, reimplement the
+HTTP calls in `HomeGrownGatewayDeployer` (deploy/undeploy) and
+`HomeGrownFederatedAPIDiscovery` (list routes) against that gateway's admin API,
+keeping the same SPI methods. Preserve a **managed marker** on pushed routes
+(here `managedBy = wso2-apim-homegrown-connector`) so discovery can skip
+connector-owned routes and avoid a sync loop.
 
 See [`../../docs/architecture.md`](../../docs/architecture.md) and
 [`../../docs/federation-semantics.md`](../../docs/federation-semantics.md).
