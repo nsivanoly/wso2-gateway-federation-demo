@@ -58,8 +58,7 @@ The connector sources live in [`gateway-connectors/`](../gateway-connectors);
 | `services/backend/`         | Unified mock backend for every "original" upstream               |
 | `services/mock-gateway/`    | Mock third-party ("home-grown") gateway + admin console          |
 | `services/dashboard/`       | Live federation console over the WSO2 REST APIs                  |
-| `provisioning/`             | One-shot federation wiring (`provision.sh` → `deploy-apis.sh`) + OpenAPI specs |
-| `bin/apictl`                | WSO2 CLI used by provisioning (downloaded by `start.sh` if absent) |
+| `provisioning/`             | One-shot federation wiring (`provision.sh` → `deploy-apis.sh`, pure REST) + OpenAPI specs |
 
 ## Request flow (example: Vehicle API on Kong)
 

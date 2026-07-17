@@ -39,8 +39,8 @@ behaviour (lifecycle, discovery, known limitations).
 - ~6 GB memory available to Docker (WSO2 APIM is a large image; first boot ~1–2 min)
 - Free host ports: `9443, 8243, 8280, 8000, 8001, 8002, 8090, 4000, 3000`
 
-`start.sh` downloads the WSO2 `apictl` CLI into `bin/` on first run if it is not
-already present; it runs **inside** the provisioning container, not on your host.
+No other tooling is required — federation wiring uses the WSO2 REST API directly
+from a throwaway container (no CLI to install).
 
 ---
 
@@ -57,8 +57,8 @@ Enter, so a plain `./start.sh` works end-to-end. On completion it prints a
 "Demo Ready" summary with copy-paste curl commands.
 
 - **First run** verifies prerequisites, generates `.env` from `.env.sample`,
-  downloads `apictl` if missing, builds the connector JARs and images, starts every
-  service, then wires federation.
+  builds the connector JARs and images, starts every service, then wires
+  federation (via the WSO2 REST API).
 - **Later runs** reuse `.env`, skip one-time setup, and just start the stack.
   Federation wiring is **self-healing**: it re-runs only if a gateway is not
   already serving its APIs.
@@ -128,7 +128,6 @@ A plain `./stop.sh` never removes user data or configuration.
 │   ├── provision.sh            # waits for services, then runs deploy-apis.sh
 │   ├── deploy-apis.sh          # creates/publishes/deploys the six APIs
 │   └── openapi/                # OpenAPI specs for the six APIs
-├── bin/apictl                  # WSO2 CLI (downloaded on first run; gitignored)
 ├── docs/                       # architecture & federation semantics
 └── back/                       # parked files (reference only; safe to delete)
 ```
@@ -141,8 +140,8 @@ service, provisioning) — see [Documentation](#documentation).
 ## Configuration
 
 All configurable values live in [`.env.sample`](.env.sample) (ports, images,
-credentials, `apictl` version). `start.sh` copies it to `.env` on first run; edit
-`.env` to customise. **`.env` is never committed.**
+credentials). `start.sh` copies it to `.env` on first run; edit `.env` to
+customise. **`.env` is never committed.**
 
 ---
 
@@ -164,7 +163,6 @@ credentials, `apictl` version). `start.sh` copies it to `.env` on first run; edi
 |---------|-----|
 | Control plane slow to answer on first boot | Normal — WSO2 APIM takes ~1–2 min. `start.sh` waits for it. |
 | A gateway returns 404 right after deploy | Router/discovery settle delay; retry after a few seconds. |
-| `apictl` download fails | Place the `apictl` binary at `bin/apictl` manually (matching `APICTL_VERSION`). |
 | Discovery silently stalls | Restart the control plane — clears an orphaned lock in `AM_TASK_LOCK`. See [docs/federation-semantics.md](docs/federation-semantics.md). |
 | Ports already in use | Edit the `*_PORT` values in `.env`. |
 | Reset everything | `./stop.sh` → option 2 or 3, then `./start.sh`. |

@@ -17,12 +17,7 @@ USER=${WSO2_ADMIN_USER:-admin}
 PASS=${WSO2_ADMIN_PASSWORD:-admin}
 PUB="$CP/api/am/publisher/v4"
 ADMIN="$CP/api/am/admin/v4"
-WORK=/tmp/wso2-projects; mkdir -p "$WORK"
 log() { echo "    $*"; }
-
-# ---- apictl login ----
-apictl add env demo --apim "$CP" >/dev/null 2>&1 || true
-apictl login demo -u "$USER" -p "$PASS" -k >/dev/null 2>&1 || { log "ERROR: apictl login failed"; exit 1; }
 
 # ---- Publisher/Admin REST token ----
 CREDS=$(curl -sk -u "$USER:$PASS" -H "Content-Type: application/json" \
@@ -67,7 +62,7 @@ register_env ThirdParty "Mock Third-Party Gateway"  "Unsupported gateway (HomeGr
 # vhost for a given environment name
 vhost_of() { case "$1" in Default) echo localhost;; Kong) echo kong;; ThirdParty) echo mock-gateway;; *) echo localhost;; esac; }
 
-# ---- create + deploy + publish one API ----
+# ---- create + deploy + publish one API (pure REST; no external CLI) ----
 # deploy_api <Name> <oas> <context> <backendUrl> <env> <gwType|-> [deploy=yes|no]
 # gwType: the external gateway type (KongLocal / HomeGrown) so the API is created as
 # an external-gateway API whose revision deployment invokes that connector's
@@ -75,34 +70,38 @@ vhost_of() { case "$1" in Default) echo localhost;; Kong) echo kong;; ThirdParty
 # deploy=no creates + publishes the API but leaves it UNDEPLOYED (its gatewayType
 # still records the intended runtime) so the dashboard can deploy it on demand.
 deploy_api() {
-  local name=$1 oas=$2 ctx=$3 backend=$4 env=$5 gwtype=$6 do_deploy=${7:-yes} proj="$WORK/$1"
+  local name=$1 oas=$2 ctx=$3 backend=$4 env=$5 gwtype=$6 do_deploy=${7:-yes}
   log "----------------------------------------------------------"
   log "$name  ->  env=$env  (context=$ctx${gwtype:+, type=$gwtype})"
-  rm -rf "$proj"; apictl init "$proj" --oas "$oas" --force >/dev/null 2>&1
-  sed -i \
-    -e "s#context: /$name#context: $ctx#" \
-    -e "s#url: http://localhost:8080#url: $backend#" \
-    -e "s#url: http://localhost:8081#url: $backend#" \
-    -e "s#lifeCycleStatus: CREATED#lifeCycleStatus: PUBLISHED#" \
-    "$proj/api.yaml"
-  # For a federated gateway, create the API as an external-gateway API of the
-  # connector's type; this is what makes the revision deployment call the connector.
-  if [ "$gwtype" != "-" ]; then
-    sed -i "/^data:/a\\  gatewayType: $gwtype" "$proj/api.yaml"
-    sed -i "/^data:/a\\  gatewayVendor: external" "$proj/api.yaml"
-  fi
-  # We control deployment via REST, so don't let import auto-deploy to Default.
-  printf "type: deployment_environments\nversion: v4.7.0\ndata: []\n" > "$proj/deployment_environments.yaml"
-  apictl import api -f "$proj" -e demo -k --update --preserve-provider=false >/dev/null 2>&1
 
-  # Resolve id (Publisher search index lags on a fresh server).
-  local id="" i=0
-  while :; do
-    id=$(curl -sk -H "$AUTH" "$PUB/apis?query=name:$name" | jq -r '.list[0].id // empty')
-    [ -n "$id" ] && break
-    i=$((i+1)); [ $i -gt 20 ] && { log "WARN: could not resolve id for $name"; return; }
-    sleep 3
-  done
+  # gatewayVendor/gatewayType are immutable after creation, so they must be set
+  # at import time. Native -> wso2/synapse; federated -> external + connector type.
+  local gwvendor="wso2" gwtypeval="wso2/synapse"
+  if [ "$gwtype" != "-" ]; then gwvendor="external"; gwtypeval="$gwtype"; fi
+
+  # Is the API already present? (idempotent re-runs)
+  local id
+  id=$(curl -sk -H "$AUTH" "$PUB/apis?query=name:$name" | jq -r '.list[0].id // empty')
+
+  if [ -z "$id" ]; then
+    # Create the API from its OpenAPI definition via the Publisher REST API.
+    local props
+    props=$(jq -nc --arg n "$name" --arg c "$ctx" --arg u "$backend" --arg gv "$gwvendor" --arg gt "$gwtypeval" \
+      '{name:$n,version:"v1",context:$c,gatewayVendor:$gv,gatewayType:$gt,policies:["Unlimited"],
+        endpointConfig:{endpoint_type:"http",production_endpoints:{url:$u}}}')
+    id=$(curl -sk -H "$AUTH" \
+      -F "file=@$oas;type=application/x-yaml" \
+      -F "additionalProperties=$props;type=application/json" \
+      "$PUB/apis/import-openapi" | jq -r '.id // empty')
+    # Publisher search index lags on a fresh server; retry the id resolve.
+    local i=0
+    while [ -z "$id" ]; do
+      sleep 3; i=$((i+1)); [ $i -gt 20 ] && { log "WARN: could not create/resolve $name"; return; }
+      id=$(curl -sk -H "$AUTH" "$PUB/apis?query=name:$name" | jq -r '.list[0].id // empty')
+    done
+  else
+    log "already exists (id=$id) — reconciling"
+  fi
 
   # Open resource security + mark default version.
   # securityScheme=["oauth2"] drops the mandatory API-key scheme so the native WSO2
@@ -115,7 +114,10 @@ deploy_api() {
   # Deploy a revision to the API's target gateway environment. For a federated
   # environment (KongLocal / HomeGrown) this invokes the connector's GatewayDeployer,
   # which pushes the API to the real runtime (Kong Admin API / mock gateway).
-  if [ "$do_deploy" = yes ]; then
+  # Skip if already deployed (avoids piling up revisions on re-runs).
+  local deployed
+  deployed=$(curl -sk -H "$AUTH" "$PUB/apis/$id/deployments" | jq -r 'if type=="array" then length else (.list|length) end // 0')
+  if [ "$do_deploy" = yes ] && [ "${deployed:-0}" = 0 ]; then
     local rev
     rev=$(curl -sk -X POST -H "$AUTH" -H "Content-Type: application/json" -d '{"description":"init"}' "$PUB/apis/$id/revisions" | jq -r '.id // empty')
     if [ -n "$rev" ]; then
@@ -124,6 +126,8 @@ deploy_api() {
         "$PUB/apis/$id/deploy-revision?revisionId=$rev"
       log "deployed revision to '$env' -> connector federated $name to its runtime"
     fi
+  elif [ "$do_deploy" = yes ]; then
+    log "already deployed to '$env' — skipping"
   else
     log "created (UNDEPLOYED) -> deploy later from the dashboard to '$env'"
   fi
@@ -146,4 +150,7 @@ deploy_api PaymentAPI  /provisioning/openapi/payment.yaml  /payment  http://back
 
 log "----------------------------------------------------------"
 log "All APIs in the control plane (marketplace):"
-apictl get apis -e demo -k 2>/dev/null | sed 's/^/        /' || true
+printf "        %-14s %-8s %-12s %s\n" NAME VERSION CONTEXT STATUS
+curl -sk -H "$AUTH" "$PUB/apis?limit=50" \
+  | jq -r '.list[] | "        \(.name|.[0:13]|. + (" "*(13-length)))  \(.version)      \(.context|.[0:11]|. + (" "*(11-length)))  \(.lifeCycleStatus)"' 2>/dev/null \
+  || true

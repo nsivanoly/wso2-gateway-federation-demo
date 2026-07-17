@@ -5,8 +5,6 @@
 # ---- Local parking area (reference only; not part of the project) ----
 back/
 
-# ---- Tooling / downloaded binaries ----
-bin/apictl
 
 # ---- Build artifacts ----
 **/target/

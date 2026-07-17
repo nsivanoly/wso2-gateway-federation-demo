@@ -16,7 +16,6 @@ cd "$SCRIPT_DIR"
 
 MARKER=".demo-initialized"
 COMPOSE="docker compose"
-APICTL_VERSION="${APICTL_VERSION:-4.7.0}"
 
 # ---- output helpers ----------------------------------------------------------
 c_ok(){   printf "  \033[32m✓\033[0m %s\n" "$1"; }
@@ -46,22 +45,6 @@ fi
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
 
-# ---- 3. apictl CLI (used by provisioning; download once if missing) ----------
-if [ ! -x bin/apictl ]; then
-  c_wait "apictl not found in bin/ — downloading v${APICTL_VERSION}..."
-  os=$(uname -s | tr '[:upper:]' '[:lower:]'); arch=$(uname -m)
-  case "$arch" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; esac
-  url="https://github.com/wso2/product-apim-tooling/releases/download/v${APICTL_VERSION}/apictl-${APICTL_VERSION}-${os}-${arch}.tar.gz"
-  if curl -fsSL "$url" -o /tmp/apictl.tgz && tar -xzf /tmp/apictl.tgz -C /tmp apictl/apictl 2>/dev/null; then
-    mkdir -p bin && mv /tmp/apictl/apictl bin/apictl && chmod +x bin/apictl
-    c_ok "apictl downloaded"
-  else
-    c_err "could not download apictl from $url — place the binary at bin/apictl manually"; exit 1
-  fi
-else
-  c_ok "apictl present"
-fi
-
 # ---- build option ------------------------------------------------------------
 hr
 echo "⚙️  Choose build option"
@@ -87,7 +70,7 @@ case "$(ask "Select [1/2/3] (default 2): " 2)" in
 esac
 hr
 
-# ---- 4. build the custom gateway connector JARs (once, cached) ---------------
+# ---- 3. build the custom gateway connector JARs (once, cached) ---------------
 # The control-plane image bakes these OSGi bundles into dropins/ at image-build
 # time. We build them here only if the JAR is missing, using a persistent Maven
 # cache volume (gateway-federation-m2) so the first run is a one-off.
@@ -108,14 +91,14 @@ build_connector "gateway-connectors/konglocal" "components/konglocal.gw.manager"
   "components/konglocal.gw.manager/target/konglocal.gw.manager-*.jar" KongLocal
 hr
 
-# ---- 5. bring up runtime services (the init profile is excluded by default) --
+# ---- 4. bring up runtime services (the init profile is excluded by default) --
 echo "Starting services..."
 # shellcheck disable=SC2086
 $COMPOSE up -d $BUILD_FLAGS \
   backend control-plane kong-database kong-migrations kong mock-gateway dashboard >/dev/null 2>&1
 c_ok "Containers started"
 
-# ---- 6. readiness ------------------------------------------------------------
+# ---- 5. readiness ------------------------------------------------------------
 wait_http(){ # label url expected-code-glob
   local label=$1 url=$2 want=$3 i=0 code
   while :; do
@@ -133,7 +116,7 @@ wait_http "WSO2 control plane"  "https://localhost:${CONTROL_PLANE_HTTPS_PORT:-9
 wait_http "Dashboard"           "http://localhost:${DASHBOARD_PORT:-3000}/api/health"                    "200"
 hr
 
-# ---- 7. federation wiring (idempotent, self-healing) -------------------------
+# ---- 6. federation wiring (idempotent, self-healing) -------------------------
 # Authoritative readiness: is every gateway already serving its own APIs? This
 # survives container recreation / volume loss, unlike a bare marker file.
 code(){ curl -sk -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || echo 000; }
@@ -164,7 +147,7 @@ done
 federation_ready && c_ok "All gateways serving their APIs"
 hr
 
-# ---- 8. summary --------------------------------------------------------------
+# ---- 7. summary --------------------------------------------------------------
 cat <<EOF
 ✅ Demo Ready
 

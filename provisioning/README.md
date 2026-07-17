@@ -13,15 +13,17 @@ profile). `start.sh` invokes it after the stack is healthy; it is idempotent.
 
 ## What `deploy-apis.sh` does
 
-1. Authenticates to WSO2 (`apictl` + a Publisher/Admin REST token).
+1. Authenticates to WSO2 (registers an OAuth client and obtains a Publisher/Admin REST token).
 2. **Registers two federated environments** (`Kong` → `KongLocal`,
    `ThirdParty` → `HomeGrown`) with `provider: external` and the connector's
    `admin_url`/`proxy_url` in `additionalProperties`. `provider: external` is
    what makes revision deployments dispatch to the connector's `GatewayDeployer`.
-3. For each API: `apictl init` from its OpenAPI spec, sets context / backend /
-   (for federated APIs) `gatewayVendor: external` + `gatewayType`, imports it,
-   opens resource security, deploys a revision to its target environment, and
-   publishes it to the Dev Portal.
+3. For each API: creates it from its OpenAPI spec via `POST /apis/import-openapi`
+   with `context` / backend `endpointConfig` / (for federated APIs)
+   `gatewayVendor: external` + `gatewayType` set at import time (these are
+   immutable afterward), opens resource security, deploys a revision to its
+   target environment, and publishes it to the Dev Portal. All steps are pure
+   REST calls (`curl` + `jq`) — no CLI.
 
 | API | Environment | Gateway type | Backend |
 |-----|-------------|--------------|---------|
@@ -37,6 +39,6 @@ Normally automatic (`./start.sh`). To run/re-run manually:
 docker compose run --rm init
 ```
 
-Idempotent — environments are upserted and API imports use `--update`, so
-re-running reconciles rather than duplicates. Requires `bin/apictl` (downloaded
-by `start.sh` if missing).
+Idempotent — environments are upserted, existing APIs are detected by name and
+reconciled (not re-created), and deployment is skipped if the API is already
+deployed. No external CLI is required.

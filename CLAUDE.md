@@ -534,7 +534,6 @@ gateway-federation-demo/
 │   ├── deploy-apis.sh          #   creates/publishes/deploys the six APIs
 │   └── openapi/                #   OpenAPI specs for the six APIs
 │
-├── bin/apictl                  # WSO2 CLI (downloaded on first run; gitignored)
 ├── docs/                       # architecture & federation semantics
 ├── back/                       # parked files (reference only; safe to delete)
 │

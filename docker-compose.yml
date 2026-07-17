@@ -143,9 +143,10 @@ services:
     restart: unless-stopped
     networks: [demo]
 
-  # ---------- One-shot init: federation wiring (apictl-driven) ----------
+  # ---------- One-shot init: federation wiring (pure REST) ----------
   # Enabled only under the "init" profile; run explicitly by start.sh. Creates and
-  # publishes the six APIs in WSO2 and deploys each to its one gateway environment.
+  # publishes the six APIs in WSO2 (via the Publisher REST API) and deploys each to
+  # its one gateway environment. No external CLI required.
   init:
     image: alpine:3.20
     profiles: ["init"]
@@ -159,6 +160,5 @@ services:
       WSO2_ADMIN_USER: ${WSO2_ADMIN_USER:-admin}
       WSO2_ADMIN_PASSWORD: ${WSO2_ADMIN_PASSWORD:-admin}
     volumes:
-      - ./bin/apictl:/usr/local/bin/apictl:ro
       - ./provisioning:/provisioning
     networks: [demo]
