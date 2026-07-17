@@ -80,9 +80,9 @@ gateway isn't already serving. Consoles: dashboard `:3000`, Publisher/DevPortal
   deployments dispatch to the connector instead of the internal synapse gateway.
   APIs must be created with `gatewayVendor: external` + `gatewayType: <type>`
   (both immutable after creation).
-- **Provisioning is pure REST** (`provisioning/deploy-apis.sh`, curl + jq): create
-  via `POST /apis/import-openapi`, deploy a revision, publish. **No apictl / no
-  CLI.** Idempotent (upsert env, detect existing APIs, skip already-deployed).
+- **Provisioning is pure REST** (`provisioning/deploy-apis.sh`, curl + jq, no
+  external CLI): create via `POST /apis/import-openapi`, deploy a revision,
+  publish. Idempotent (upsert env, detect existing APIs, skip already-deployed).
 - **Unified backend:** one `services/backend` image serves every collection by
   inferring it from the path (drops `/v1`), reached in-cluster as `backend:8080`.
 - **Managed markers** let discovery skip connector-pushed routes (avoid loops):
@@ -125,16 +125,16 @@ push/pull, lifecycle, and discovery behaviour.
   control plane (`docker compose restart control-plane` — preserves H2).
 - **First cold connector build** downloads WSO2 deps (slow); the Maven cache
   volume `gateway-federation-m2` (Docker) or `~/.m2` (local) makes reruns fast.
-- **Admin UI field types:** gateway-env config fields honor `type: "options"`
-  (dropdown) — not `select`/`checkbox` (those fall back to a text box). The
-  options widget doesn't pre-select from `defaultValue`; the connector default
-  still applies when unset.
+- **Admin UI field types:** gateway-env config fields render a dropdown only with
+  `type: "options"` (values as option objects). The options widget doesn't
+  pre-select from `defaultValue`, so the connector default applies when unset.
 - **Colima** is the Docker backend here; if `docker` is down, `colima start`.
 
 ## Conventions
 
-- Do not reintroduce apictl, per-service backends, `working/`, `third-party/`, or a
-  wholesale `deployment.toml` mount — these were deliberately removed.
+- Keep provisioning REST-based, the backend unified, and the layout as-is
+  (`control-plane/`, `gateway-connectors/`, `services/`, `provisioning/`); the CP
+  image injects the gateway types into `deployment.toml` rather than replacing it.
 - Keep the six-API / three-gateway story intact; each API lives on exactly one
   gateway. Don't deploy the same API to multiple gateways.
 - Update the relevant README/docs when behaviour changes; keep `.env.sample`
