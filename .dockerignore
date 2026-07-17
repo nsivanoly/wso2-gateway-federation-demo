@@ -1,0 +1,22 @@
+# Keep Docker build contexts small (the control-plane build context is the repo
+# root). Only the connector target/*.jar and the referenced source are needed.
+.git
+.gitignore
+back/
+docs/
+README.md
+CLAUDE.md
+.env
+.env.sample
+.demo-initialized
+.claude/
+**/node_modules/
+**/*.md
+**/.DS_Store
+
+# Connector build intermediates (the final target/*.jar is copied by the image,
+# so keep target/ but drop the bulky intermediate dirs).
+**/target/classes/
+**/target/test-classes/
+**/target/generated-sources/
+**/target/maven-shared-archive-resources/

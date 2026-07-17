@@ -102,18 +102,18 @@ async function kongLiveRoutes() {
   const out = [];
   try {
     const svcs = (await (await fetch(`${KONG_ADMIN}/services`)).json()).data || [];
-    for (const s of svcs) {
+    // Fetch every service's routes concurrently.
+    const perSvc = await Promise.all(svcs.map(async (s) => {
       const routes = (await (await fetch(`${KONG_ADMIN}/services/${s.id}/routes`)).json()).data || [];
-      for (const r of routes) {
-        // Connector-pushed services carry the wso2-apim-managed tag; direct
-        // deploys (e.g. from this dashboard) do not. The tag is authoritative —
-        // do NOT infer from the route name (the dashboard names its direct
-        // routes "<name>-ext-route", which must NOT count as managed).
-        const tags = [...(s.tags || []), ...(r.tags || [])];
-        const managed = tags.includes('wso2-apim-managed');
-        out.push({ gateway: 'Kong', name: s.name, context: firstSeg((r.paths || [])[0]), managed });
-      }
-    }
+      // Connector-pushed services carry the wso2-apim-managed tag; direct deploys
+      // (e.g. from this dashboard) do not. The tag is authoritative — do NOT infer
+      // from the route name (the dashboard names its direct routes "<name>-ext-route").
+      return routes.map((r) => ({
+        gateway: 'Kong', name: s.name, context: firstSeg((r.paths || [])[0]),
+        managed: [...(s.tags || []), ...(r.tags || [])].includes('wso2-apim-managed'),
+      }));
+    }));
+    for (const rs of perSvc) out.push(...rs);
   } catch { /* Kong unreachable */ }
   return out;
 }
@@ -132,17 +132,21 @@ async function buildCatalog() {
   const wsoNorms = new Set(list.map((it) => norm(it.name)));
 
   // Snapshot the live gateway routes and index them by normalized context/name.
-  const gwRoutes = [...(await kongLiveRoutes()), ...(await mockLiveRoutes())];
+  // Kong + mock reads run concurrently.
+  const [kongR, mockR] = await Promise.all([kongLiveRoutes(), mockLiveRoutes()]);
+  const gwRoutes = [...kongR, ...mockR];
   const routeMatched = new Set();
   const findRoute = (name, context) => {
     const cn = ctxNorm(context), nn = norm(name);
     return gwRoutes.find((r) => ctxNorm(r.context) === cn || norm(r.name) === nn);
   };
 
-  const out = [];
-  for (const it of list) {
-    let detail = {}; try { detail = await (await wso2(`/apis/${it.id}`)).json(); } catch {}
-    let deployments = []; try { const d = await (await wso2(`/apis/${it.id}/deployments`)).json(); deployments = Array.isArray(d) ? d : (d.list || []); } catch {}
+  // Per-API detail + deployments fetched concurrently (was N sequential pairs).
+  const rows = await Promise.all(list.map(async (it) => {
+    const [detail, deployments] = await Promise.all([
+      wso2(`/apis/${it.id}`).then((r) => r.json()).catch(() => ({})),
+      wso2(`/apis/${it.id}/deployments`).then((r) => r.json()).then((d) => (Array.isArray(d) ? d : (d.list || []))).catch(() => []),
+    ]);
     const vendor = detail.gatewayVendor || it.gatewayVendor, type = detail.gatewayType || it.gatewayType;
     const envKey = (deployments.length ? deployments[0].name : null) || inferEnv(vendor, type);
     const gw = GATEWAYS[envKey] || GATEWAYS.Default;
@@ -152,7 +156,7 @@ async function buildCatalog() {
     // Match against a live gateway route (external gateways only).
     const route = envKey !== 'Default' ? findRoute(it.name, it.context) : null;
     if (route) routeMatched.add(route);
-    out.push({
+    return {
       id: it.id, name: it.name, version: it.version, context: it.context,
       deployed: deployments.length > 0,
       isTemplate: TEMPLATE_NORMS.has(norm(it.name)),
@@ -164,8 +168,9 @@ async function buildCatalog() {
       backend: { display: displayBackend(backendInternal), internal: backendInternal },
       gatewayBase: { display: gw.external + it.context + (gw.versioned ? '/v1' : '') },
       resources: ops, primary,
-    });
-  }
+    };
+  }));
+  const out = [...rows];
 
   // Gateway-native routes not (yet) in WSO2: show them immediately as awaiting
   // discovery, so a direct deploy is visible before the next discovery cycle.
