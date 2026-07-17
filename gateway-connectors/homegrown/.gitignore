@@ -1,0 +1,14 @@
+# Maven build outputs
+**/target/
+
+# macOS metadata
+.DS_Store
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Common temporary files
+*.log
+*.tmp

@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WSO2 Gateway Federation — Live Console</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --line:#2a3240;
+    --txt:#e6edf3; --muted:#9aa7b4; --accent:#3b82f6;
+    --wso2:#ff7d1a; --kong:#12b886; --thirdparty:#a879ff;
+    --ok:#2ea043; --warn:#d29922; --err:#f85149;
+    --radius:14px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#17202e,transparent),var(--bg);color:var(--txt);font-family:var(--sans);line-height:1.45}
+  a{color:var(--accent)}
+  header{padding:26px 32px 8px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}
+  header h1{margin:0;font-size:22px;letter-spacing:.2px}
+  header p{margin:4px 0 0;color:var(--muted);font-size:13px}
+  .wrap{padding:16px 32px 60px;max-width:1400px;margin:0 auto}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0 22px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+  .stat .n{font-size:26px;font-weight:700}
+  .stat .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+  .stat.wso2 .n{color:var(--wso2)} .stat.kong .n{color:var(--kong)} .stat.thirdparty .n{color:var(--thirdparty)}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+  .chip{background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:6px 13px;border-radius:999px;cursor:pointer;font-size:13px;user-select:none}
+  .chip.active{color:#fff;border-color:var(--accent);background:#1b2a44}
+  .spacer{flex:1}
+  button{font-family:inherit}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;transition:.12s}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px}
+  .card.wso2::before{background:var(--wso2)} .card.kong::before{background:var(--kong)} .card.thirdparty::before{background:var(--thirdparty)}
+  .card.pending::before{background:repeating-linear-gradient(45deg,#3a4658,#3a4658 6px,#2a3240 6px,#2a3240 12px)}
+  .card.pending{border-style:dashed}
+  .badge.tmpl{background:rgba(90,110,140,.2);color:#9db2cc;border:1px solid #3a4658}
+  .btn.danger{border-color:#5a2130;color:#ff9aa5} .btn.danger:hover{border-color:var(--err);background:rgba(248,81,73,.12)}
+  .card h3{margin:0;font-size:16px;display:flex;align-items:center;gap:8px}
+  .ver{color:var(--muted);font-size:12px;font-weight:500}
+  .row1{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+  .badge{font-size:11px;padding:3px 9px;border-radius:999px;font-weight:600;letter-spacing:.3px}
+  .badge.gw-wso2{background:rgba(255,125,26,.15);color:var(--wso2);border:1px solid rgba(255,125,26,.35)}
+  .badge.gw-kong{background:rgba(18,184,134,.15);color:var(--kong);border:1px solid rgba(18,184,134,.35)}
+  .badge.gw-thirdparty{background:rgba(168,121,255,.15);color:var(--thirdparty);border:1px solid rgba(168,121,255,.35)}
+  .pill{font-size:11px;padding:3px 9px;border-radius:999px;font-weight:600}
+  .pill.up{background:rgba(46,160,67,.16);color:#3fb950;border:1px solid rgba(46,160,67,.4)}
+  .pill.down{background:rgba(210,153,34,.16);color:var(--warn);border:1px solid rgba(210,153,34,.4)}
+  .pill.disc{background:rgba(59,130,246,.16);color:#6ea8fe;border:1px solid rgba(59,130,246,.4)}
+  .urls{margin:14px 0 10px;display:grid;gap:8px}
+  .urlrow{display:grid;grid-template-columns:74px 1fr auto;gap:8px;align-items:center}
+  .urlrow .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .url{font-family:var(--mono);font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 9px;overflow:auto;white-space:nowrap}
+  .url.dim{color:var(--muted);font-style:italic}
+  .copy{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 4px}
+  .copy:hover{color:var(--txt)}
+  .tryrow{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+  select{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-family:var(--mono);font-size:12px}
+  .resp{margin-top:12px;border-top:1px dashed var(--line);padding-top:12px;display:none}
+  .resp.show{display:block}
+  .resp .meta{display:flex;gap:10px;align-items:center;font-size:12px;margin-bottom:8px;flex-wrap:wrap}
+  .code{font-weight:700;font-family:var(--mono)}
+  .code.ok{color:#3fb950} .code.bad{color:var(--err)}
+  pre{margin:0;background:#0b0f16;border:1px solid var(--line);border-radius:8px;padding:11px;max-height:240px;overflow:auto;font-family:var(--mono);font-size:12px;color:#cdd9e5}
+  .grp{margin:26px 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:10px}
+  .grp::after{content:"";flex:1;height:1px;background:var(--line)}
+  .loading{color:var(--muted);padding:40px;text-align:center}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:11px 18px;border-radius:10px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🛰️ WSO2 Gateway Federation — Live Console</h1>
+    <p>One control plane · three data planes · each API deployed to exactly one gateway</p>
+  </div>
+  <div style="text-align:right">
+    <button class="btn" id="refresh">↻ Refresh</button>
+    <p id="updated" style="margin-top:6px"></p>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stats" id="stats"></div>
+  <div class="toolbar" id="filters"></div>
+  <div id="content"><div class="loading">Loading catalog…</div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const GW = {
+  Default:    {cls:'wso2',       badge:'gw-wso2',       label:'WSO2 Gateway'},
+  Kong:       {cls:'kong',       badge:'gw-kong',       label:'Kong Gateway'},
+  ThirdParty: {cls:'thirdparty', badge:'gw-thirdparty', label:'Third-Party Gateway'},
+};
+let CATALOG = [], FILTER = 'all';
+
+const $ = (s,r=document)=>r.querySelector(s);
+const el = (t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._x);t._x=setTimeout(()=>t.classList.remove('show'),1900);}
+function copy(txt){navigator.clipboard.writeText(txt).then(()=>toast('Copied'));}
+
+async function load(){
+  $('#content').innerHTML='<div class="loading">Loading catalog…</div>';
+  const r = await fetch('/api/catalog'); const d = await r.json();
+  CATALOG = d.apis||[];
+  $('#updated').innerHTML='<span style="color:var(--muted);font-size:12px">updated '+new Date().toLocaleTimeString()+'</span>';
+  renderStats(); renderFilters(); render();
+}
+function renderStats(){
+  const c = CATALOG;
+  const by = k => c.filter(a=>a.gateway && a.gateway.key===k).length;
+  const stats=[
+    ['all','Total APIs',c.length],
+    ['wso2','WSO2 Native',by('Default')],
+    ['kong','Kong',by('Kong')],
+    ['thirdparty','Third-Party',by('ThirdParty')],
+    ['','Deployed',c.filter(a=>a.deployed).length],
+    ['','Templates',c.filter(a=>a.pending).length],
+  ];
+  $('#stats').innerHTML='';
+  stats.forEach(([cls,l,n])=>{const s=el('div','stat'+(cls?' '+cls:''));s.innerHTML=`<div class="n">${n}</div><div class="l">${l}</div>`;$('#stats').appendChild(s);});
+}
+function renderFilters(){
+  const defs=[['all','All'],['Default','WSO2 Native'],['Kong','Kong'],['ThirdParty','Third-Party'],['pending','Templates']];
+  const f=$('#filters');f.innerHTML='';
+  defs.forEach(([k,l])=>{const c=el('div','chip'+(FILTER===k?' active':''),l);c.onclick=()=>{FILTER=k;render();document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('active',x===c));};f.appendChild(c);});
+  const sp=el('div','spacer');f.appendChild(sp);
+  const legend=el('div','',`<span class="badge gw-wso2">native</span> <span class="badge gw-kong">Kong</span> <span class="badge gw-thirdparty">HomeGrown</span>`);f.appendChild(legend);
+}
+function match(a){
+  if(FILTER==='all')return true;
+  if(FILTER==='undeployed')return !a.deployed;
+  if(FILTER==='pending')return !!a.pending;
+  return a.gateway && a.gateway.key===FILTER;
+}
+
+function render(){
+  const list=CATALOG.filter(match);
+  const box=$('#content');box.innerHTML='';
+  if(!list.length){box.innerHTML='<div class="loading">No APIs match this filter.</div>';return;}
+  const groups=['Default','Kong','ThirdParty'];
+  groups.forEach(g=>{
+    const items=list.filter(a=>a.gateway && a.gateway.key===g);
+    if(!items.length)return;
+    box.appendChild(el('div','grp',GW[g].label+' · '+items.length));
+    const grid=el('div','grid');
+    items.forEach(a=>grid.appendChild(card(a)));
+    box.appendChild(grid);
+  });
+  const pend=list.filter(a=>a.pending);
+  if(pend.length){
+    box.appendChild(el('div','grp','⧉ Deployable templates — choose a gateway · '+pend.length));
+    const grid=el('div','grid');
+    pend.forEach(a=>grid.appendChild(card(a)));
+    box.appendChild(grid);
+  }
+}
+
+function card(a){
+  const cls = a.gateway ? GW[a.gateway.key].cls : 'pending';
+  const c=el('div','card '+cls);
+  const gwUrl = a.deployed ? a.gatewayBase.display : null;
+  const badge = a.gateway
+    ? `<span class="badge ${GW[a.gateway.key].badge}">${a.gateway.badge}</span>
+       <span class="pill ${a.deployed?'up':'down'}">${a.deployed?'● deployed':'○ not deployed'}</span>
+       ${a.discovered?'<span class="pill disc">⇩ discovered by WSO2</span>':''}`
+    : `<span class="badge tmpl">template</span><span class="pill down">○ not created</span>`;
+
+  // gateway chooser (pending templates only)
+  const chooser = a.pending ? `
+    <div class="tryrow">
+      <label class="k" style="align-self:center">Deploy to</label>
+      <select class="gwsel">
+        <option value="Default">WSO2 Gateway (native)</option>
+        <option value="Kong">Kong Gateway (federated)</option>
+        <option value="ThirdParty">Third-Party Gateway (HomeGrown)</option>
+      </select>
+      <button class="btn primary depT">🚀 Deploy</button>
+    </div>` : '';
+
+  const actions = (!a.pending && a.isTemplate && a.deployed) ? `<button class="btn danger rm">✕ Remove</button>` : '';
+
+  c.innerHTML=`
+    <div class="row1"><div>
+      <h3>${a.name} <span class="ver">${a.version}</span></h3>
+      <div class="badges">${badge}</div>
+    </div></div>
+    <div class="urls">
+      <div class="urlrow"><span class="k">Original</span><span class="url">${a.backend.display||'—'}</span>${a.backend.display?`<button class="copy" title="copy">⧉</button>`:'<span></span>'}</div>
+      <div class="urlrow"><span class="k">Gateway</span>${gwUrl?`<span class="url">${gwUrl}</span><button class="copy" title="copy">⧉</button>`:'<span class="url dim">'+(a.pending?'pick a gateway below to federate this API':'not deployed')+'</span><span></span>'}</div>
+    </div>
+    <div class="tryrow">
+      <select class="res"></select>
+      <button class="btn tryO">▶ Try Original</button>
+      <button class="btn tryG" ${a.deployed?'':'disabled'}>▶ Try Gateway</button>
+      ${actions}
+    </div>
+    ${chooser}
+    <div class="resp"><div class="meta"></div><pre></pre></div>`;
+
+  const sel=$('.res',c);
+  (a.resources.length?a.resources:[a.primary]).forEach((o,i)=>{const op=el('option');op.value=i;op.textContent=(o.verb||'GET')+' '+o.target;sel.appendChild(op);});
+  const curRes=()=>(a.resources.length?a.resources:[a.primary])[sel.value||0];
+
+  c.querySelectorAll('.copy').forEach((b,i)=>b.onclick=()=>copy(i===0?a.backend.display:gwUrl));
+  $('.tryO',c).onclick=()=>tryit(a,'original',curRes(),c);
+  $('.tryG',c).onclick=()=>tryit(a,'gateway',curRes(),c);
+  const depT=$('.depT',c); if(depT) depT.onclick=()=>deployTemplate(a,$('.gwsel',c).value,depT);
+  const rm=$('.rm',c); if(rm) rm.onclick=()=>removeApi(a,rm);
+  return c;
+}
+
+async function tryit(a,side,op,c){
+  const resp=$('.resp',c),meta=$('.meta',resp),pre=$('pre',resp);
+  resp.classList.add('show');meta.innerHTML='<span style="color:var(--muted)">calling '+side+' · '+(op.verb||'GET')+' '+op.target+'…</span>';pre.textContent='';
+  const r=await fetch('/api/tryout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiId:a.id,side,target:op.target,method:op.verb||'GET'})});
+  const d=await r.json();
+  const okCls=d.ok?'ok':'bad';
+  meta.innerHTML=`<span class="code ${okCls}">${d.status||'ERR'}</span>
+     <span style="color:var(--muted)">${d.ms}ms</span>
+     <span style="color:var(--muted)">${side==='gateway'?'via '+GW[a.gateway.key].label:'direct to backend'}</span>
+     <span class="url" style="flex:1">${d.url||''}</span>`;
+  pre.textContent = d.error ? ('ERROR: '+d.error) : JSON.stringify(d.body,null,2);
+}
+
+async function deployTemplate(a,gateway,btn){
+  btn.disabled=true;btn.textContent='Deploying…';
+  const r=await fetch('/api/deploy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:a.name,gateway})});
+  const d=await r.json();
+  if(!d.ok){toast('Deploy failed: '+(d.error||JSON.stringify(d.detail||{})));btn.disabled=false;btn.textContent='🚀 Deploy';return;}
+  if(d.discover){
+    toast(a.name+' pushed directly to '+GW[gateway].label+' — WSO2 discovering…');
+    btn.textContent='Awaiting discovery…';
+    // reverse-discovery runs ~every 60s; poll the catalog until it appears
+    let tries=0;const iv=setInterval(async()=>{
+      tries++;
+      const c=await (await fetch('/api/catalog')).json();
+      const found=(c.apis||[]).find(x=>x.name.toLowerCase().replace(/[^a-z0-9]/g,'')===a.name.toLowerCase().replace(/[^a-z0-9]/g,'') && !x.pending);
+      if(found){clearInterval(iv);toast(a.name+' discovered into WSO2 from '+GW[gateway].label);load();}
+      else if(tries>16){clearInterval(iv);toast('Still discovering… refresh shortly');load();}
+    },5000);
+  } else {
+    toast(a.name+' created & deployed on '+GW[gateway].label);
+    btn.textContent='Syncing…';setTimeout(load,2600);
+  }
+}
+async function removeApi(a,btn){
+  btn.disabled=true;btn.textContent='Removing…';
+  const r=await fetch('/api/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:a.name})});
+  const d=await r.json();
+  if(d.ok){toast(a.name+' removed from '+((d.removedFrom||[]).join(', ')||'—')+' — redeployable to any gateway');}
+  else{toast('Remove failed: '+(d.error||''));btn.disabled=false;btn.textContent='✕ Remove';return;}
+  setTimeout(load,2000);
+}
+
+$('#refresh').onclick=load;
+load();
+</script>
+</body>
+</html>

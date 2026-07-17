@@ -1,0 +1,164 @@
+name: ${COMPOSE_PROJECT_NAME:-gateway-federation-demo}
+
+networks:
+  demo:
+    name: ${DEMO_NETWORK:-gateway_federation_net}
+
+services:
+  # ---------- Unified mock backend ----------
+  # A single service that stands in for every "original" upstream. It infers the
+  # collection from the request path, so all six core APIs (and the on-demand
+  # dashboard templates) share one backend. Reached in-cluster as http://backend:8080.
+  backend:
+    build: ./services/backend
+    environment:
+      PORT: 8080
+    ports: ["${BACKEND_PORT:-4000}:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [demo]
+
+  # ---------- WSO2 API Platform control plane (includes the native WSO2 gateway) ----------
+  # Built from control-plane/Dockerfile: the stock WSO2 image + the two custom
+  # gateway connectors (HomeGrown, KongLocal) baked into dropins/, plus a
+  # deployment.toml that declares their gateway types. Build context is the repo
+  # root so the Dockerfile can copy the prebuilt bundles from ./gateway-connectors.
+  control-plane:
+    build:
+      context: .
+      dockerfile: control-plane/Dockerfile
+      args:
+        WSO2_IMAGE: ${WSO2_IMAGE:-wso2/wso2am:4.7.0-alpine}
+    image: ${CONTROL_PLANE_IMAGE:-gateway-federation-control-plane:4.7.0}
+    hostname: control-plane
+    ports:
+      - "${CONTROL_PLANE_HTTPS_PORT:-9443}:9443"
+      - "${CONTROL_PLANE_GATEWAY_HTTPS_PORT:-8243}:8243"
+      - "${CONTROL_PLANE_GATEWAY_HTTP_PORT:-8280}:8280"
+    networks: [demo]
+
+  # ---------- Kong gateway (Option B) — DB-backed (postgres) ----------
+  # DB mode lets the KongLocal connector deploy via the Admin API /services +
+  # /routes CRUD endpoints, so multiple APIs (Vehicle + Parking) coexist on Kong.
+  kong-database:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: kong
+      POSTGRES_DB: kong
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kong"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks: [demo]
+
+  kong-migrations:
+    image: ${KONG_IMAGE:-kong:3.7}
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    restart: on-failure
+    networks: [demo]
+
+  kong:
+    image: ${KONG_IMAGE:-kong:3.7}
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"
+      KONG_ADMIN_GUI_URL: "http://localhost:8002"
+      KONG_LOG_LEVEL: notice
+    ports:
+      - "${KONG_PROXY_PORT:-8000}:8000"
+      - "${KONG_ADMIN_PORT:-8001}:8001"
+      - "${KONG_ADMIN_GUI_PORT:-8002}:8002"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migrations:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [demo]
+
+  # ---------- Mock third-party gateway (Option C) ----------
+  # A "home-grown" gateway federated directly by the control plane's HomeGrown
+  # connector: the connector POSTs to /mock/deploy, then this gateway proxies
+  # runtime traffic. Ships an admin console at / that cross-checks the control
+  # plane to show each route's federation state.
+  mock-gateway:
+    build: ./services/mock-gateway
+    environment:
+      PORT: 8090
+      CONTROL_PLANE_URL: https://control-plane:9443
+      WSO2_ADMIN_USER: ${WSO2_ADMIN_USER:-admin}
+      WSO2_ADMIN_PASSWORD: ${WSO2_ADMIN_PASSWORD:-admin}
+    ports: ["${MOCK_GATEWAY_PORT:-8090}:8090"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [demo]
+
+  # ---------- Federation demo dashboard ----------
+  # Live console over the WSO2 Publisher/Admin REST APIs: every API, its gateway,
+  # original + gateway URLs, try-it on both, and one-click direct deploy of the
+  # template APIs (showcasing on-demand federated discovery).
+  dashboard:
+    build: ./services/dashboard
+    environment:
+      PORT: 3000
+      CONTROL_PLANE_URL: https://control-plane:9443
+      KONG_ADMIN_URL: http://kong:8001
+      THIRD_PARTY_GW_URL: http://mock-gateway:8090
+      WSO2_ADMIN_USER: ${WSO2_ADMIN_USER:-admin}
+      WSO2_ADMIN_PASSWORD: ${WSO2_ADMIN_PASSWORD:-admin}
+      # Host-facing (browser-clickable) gateway URLs shown in the console.
+      PUBLIC_WSO2_GW_URL: https://localhost:${CONTROL_PLANE_GATEWAY_HTTPS_PORT:-8243}
+      PUBLIC_KONG_URL: http://localhost:${KONG_PROXY_PORT:-8000}
+      PUBLIC_MOCK_GW_URL: http://localhost:${MOCK_GATEWAY_PORT:-8090}
+      BACKEND_PORT: ${BACKEND_PORT:-4000}
+    ports: ["${DASHBOARD_PORT:-3000}:3000"]
+    depends_on: [control-plane, kong, mock-gateway]
+    restart: unless-stopped
+    networks: [demo]
+
+  # ---------- One-shot init: federation wiring (apictl-driven) ----------
+  # Enabled only under the "init" profile; run explicitly by start.sh. Creates and
+  # publishes the six APIs in WSO2 and deploys each to its one gateway environment.
+  init:
+    image: alpine:3.20
+    profiles: ["init"]
+    working_dir: /provisioning
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apk add --no-cache bash curl coreutils jq >/dev/null && exec bash /provisioning/provision.sh"]
+    environment:
+      CONTROL_PLANE_URL: https://control-plane:9443
+      KONG_ADMIN_URL: http://kong:8001
+      THIRD_PARTY_GW_URL: http://mock-gateway:8090
+      WSO2_ADMIN_USER: ${WSO2_ADMIN_USER:-admin}
+      WSO2_ADMIN_PASSWORD: ${WSO2_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./bin/apictl:/usr/local/bin/apictl:ro
+      - ./provisioning:/provisioning
+    networks: [demo]

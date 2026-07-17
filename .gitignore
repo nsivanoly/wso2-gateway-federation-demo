@@ -1,0 +1,41 @@
+# ---- Local configuration & runtime state ----
+.env
+.demo-initialized
+
+# ---- Local parking area (reference only; not part of the project) ----
+back/
+
+# ---- Tooling / downloaded binaries ----
+bin/apictl
+
+# ---- Build artifacts ----
+**/target/
+*.jar
+*.class
+
+# ---- Node ----
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ---- Logs & temp ----
+*.log
+logs/
+tmp/
+*.tmp
+
+# ---- Generated certificates & secrets ----
+*.pem
+*.key
+*.crt
+*.jks
+
+# ---- IDE / editor ----
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
