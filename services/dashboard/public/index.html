@@ -172,8 +172,9 @@ function card(a){
   const gwUrl = a.deployed ? a.gatewayBase.display : null;
   const badge = a.gateway
     ? `<span class="badge ${GW[a.gateway.key].badge}">${a.gateway.badge}</span>
-       <span class="pill ${a.deployed?'up':'down'}">${a.deployed?'● deployed':'○ not deployed'}</span>
-       ${a.discovered?'<span class="pill disc">⇩ discovered by WSO2</span>':''}`
+       <span class="pill ${a.deployed?'up':'down'}">${a.deployed?(a.awaitingDiscovery?'● on gateway':'● deployed'):'○ not deployed'}</span>
+       ${a.discovered?'<span class="pill disc">⇩ discovered by WSO2</span>':''}
+       ${a.awaitingDiscovery?'<span class="pill down">⧗ pending discovery</span>':''}`
     : `<span class="badge tmpl">template</span><span class="pill down">○ not created</span>`;
 
   // gateway chooser (pending templates only)

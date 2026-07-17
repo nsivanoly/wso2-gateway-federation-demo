@@ -91,10 +91,50 @@ async function wso2(pq, opts = {}) {
   return r;
 }
 
+// ---- live gateway runtimes -------------------------------------------------
+// Read what is actually deployed on each federated gateway so the console can
+// show gateway-native APIs BEFORE WSO2 discovery imports them, and tell apart
+// "pushed by WSO2" (has the connector's managed marker) from "deployed directly".
+const ctxNorm = (c) => norm(String(c || '').replace(/\/v\d+$/i, '')); // drop trailing /v1 then normalize
+const firstSeg = (p) => '/' + (String(p || '').split('/').filter(Boolean).filter((s) => !/^v\d+$/i.test(s))[0] || '');
+
+async function kongLiveRoutes() {
+  const out = [];
+  try {
+    const svcs = (await (await fetch(`${KONG_ADMIN}/services`)).json()).data || [];
+    for (const s of svcs) {
+      const routes = (await (await fetch(`${KONG_ADMIN}/services/${s.id}/routes`)).json()).data || [];
+      for (const r of routes) {
+        const tags = [...(s.tags || []), ...(r.tags || [])];
+        const managed = tags.includes('wso2-apim-managed') || /-route$/.test(r.name || '');
+        out.push({ gateway: 'Kong', name: s.name, context: firstSeg((r.paths || [])[0]), managed });
+      }
+    }
+  } catch { /* Kong unreachable */ }
+  return out;
+}
+async function mockLiveRoutes() {
+  const out = [];
+  try {
+    const routes = (await (await fetch(`${TPGW}/mock/registry`)).json()).routes || [];
+    for (const r of routes) out.push({ gateway: 'ThirdParty', name: r.name, context: firstSeg(r.context), managed: !!r.managedBy });
+  } catch { /* mock gw unreachable */ }
+  return out;
+}
+
 // ---- catalog ----
 async function buildCatalog() {
   const list = (await (await wso2('/apis?limit=100')).json()).list || [];
   const wsoNorms = new Set(list.map((it) => norm(it.name)));
+
+  // Snapshot the live gateway routes and index them by normalized context/name.
+  const gwRoutes = [...(await kongLiveRoutes()), ...(await mockLiveRoutes())];
+  const routeMatched = new Set();
+  const findRoute = (name, context) => {
+    const cn = ctxNorm(context), nn = norm(name);
+    return gwRoutes.find((r) => ctxNorm(r.context) === cn || norm(r.name) === nn);
+  };
+
   const out = [];
   for (const it of list) {
     let detail = {}; try { detail = await (await wso2(`/apis/${it.id}`)).json(); } catch {}
@@ -105,19 +145,43 @@ async function buildCatalog() {
     let backendInternal = null; try { backendInternal = (detail.endpointConfig || {}).production_endpoints?.url; } catch {}
     const ops = (detail.operations || []).map((o) => ({ verb: o.verb || o.httpVerb, target: o.target }));
     const primary = ops.find((o) => (o.verb || '').toUpperCase() === 'GET' && !/\{/.test(o.target)) || ops[0] || { verb: 'GET', target: '/' };
+    // Match against a live gateway route (external gateways only).
+    const route = envKey !== 'Default' ? findRoute(it.name, it.context) : null;
+    if (route) routeMatched.add(route);
     out.push({
       id: it.id, name: it.name, version: it.version, context: it.context,
       deployed: deployments.length > 0,
       isTemplate: TEMPLATE_NORMS.has(norm(it.name)),
-      discovered: TEMPLATE_NORMS.has(norm(it.name)) && envKey !== 'Default',
+      // "discovered by WSO2" = present on the gateway runtime AND not pushed by
+      // the connector (no managed marker) -> it originated on the gateway and
+      // reverse-discovery pulled it into WSO2.
+      discovered: !!route && !route.managed,
       gateway: { key: envKey, label: gw.label, badge: gw.badge, kind: gw.kind },
       backend: { display: displayBackend(backendInternal), internal: backendInternal },
       gatewayBase: { display: gw.external + it.context + (gw.versioned ? '/v1' : '') },
       resources: ops, primary,
     });
   }
+
+  // Gateway-native routes not (yet) in WSO2: show them immediately as awaiting
+  // discovery, so a direct deploy is visible before the next discovery cycle.
+  for (const r of gwRoutes) {
+    if (routeMatched.has(r) || r.managed) continue;      // already shown, or WSO2-pushed
+    if ([...out].some((a) => ctxNorm(a.context) === ctxNorm(r.context) || norm(a.name) === norm(r.name))) continue;
+    const gw = GATEWAYS[r.gateway] || GATEWAYS.Default;
+    out.push({
+      id: null, name: r.name, version: 'v1', context: r.context,
+      deployed: true, isTemplate: TEMPLATE_NORMS.has(norm(r.name)), awaitingDiscovery: true, discovered: false,
+      gateway: { key: r.gateway, label: gw.label, badge: gw.badge, kind: gw.kind },
+      backend: { display: null, internal: null },
+      gatewayBase: { display: gw.external + r.context + (gw.versioned ? '/v1' : '') },
+      resources: [], primary: { verb: 'GET', target: '/' },
+    });
+  }
+
   for (const t of TEMPLATES) {
-    if (wsoNorms.has(norm(t.name))) continue; // already created / discovered
+    if (wsoNorms.has(norm(t.name))) continue;                              // already in WSO2
+    if (gwRoutes.some((r) => ctxNorm(r.context) === ctxNorm(t.context))) continue; // already on a gateway (shown above)
     out.push({
       id: null, name: t.name, version: 'v1', context: t.context, deployed: false, isTemplate: true, pending: true,
       gateway: null, backend: { display: displayBackend(templateBackend(t.context)), internal: templateBackend(t.context) },
