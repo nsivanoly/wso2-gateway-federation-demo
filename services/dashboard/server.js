@@ -105,8 +105,12 @@ async function kongLiveRoutes() {
     for (const s of svcs) {
       const routes = (await (await fetch(`${KONG_ADMIN}/services/${s.id}/routes`)).json()).data || [];
       for (const r of routes) {
+        // Connector-pushed services carry the wso2-apim-managed tag; direct
+        // deploys (e.g. from this dashboard) do not. The tag is authoritative —
+        // do NOT infer from the route name (the dashboard names its direct
+        // routes "<name>-ext-route", which must NOT count as managed).
         const tags = [...(s.tags || []), ...(r.tags || [])];
-        const managed = tags.includes('wso2-apim-managed') || /-route$/.test(r.name || '');
+        const managed = tags.includes('wso2-apim-managed');
         out.push({ gateway: 'Kong', name: s.name, context: firstSeg((r.paths || [])[0]), managed });
       }
     }
