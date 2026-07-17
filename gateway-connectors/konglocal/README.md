@@ -160,7 +160,7 @@ Config keys this connector understands (declared by
 | `admin_url` | input | Kong Admin API URL the connector calls to create services/routes |
 | `proxy_url` | input | Kong proxy URL used to build API execution URLs |
 | `stage` | input | Optional free-text label (default `default`) |
-| `auto_publish` | select (`true`/`false`) | **`true`** → discovered APIs are published to the Dev Portal automatically; **`false`** (default) → left in `CREATED` for manual review |
+| `auto_publish` | options (dropdown: `true`/`false`) | **`true`** → discovered APIs are published to the Dev Portal automatically; **`false`** (default) → left in `CREATED` for manual review |
 
 `apiDiscoveryScheduledWindow` is the reverse-discovery interval in **minutes**
 (omit or set `0` to disable discovery).

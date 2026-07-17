@@ -90,11 +90,21 @@ public class HomeGrownGatewayConfiguration implements GatewayAgentConfiguration 
             "Optional stage label", "default", false,
                 false,
                 Collections.emptyList(), false));
+        // Rendered as a dropdown in the Admin Portal. The gateway-environment form
+        // honors type "options" (as WSO2's built-in Kong connector uses), where each
+        // value is an option object; type "select"/"checkbox" are NOT honored here
+        // and fall back to a text box. The selected option's name ("true"/"false")
+        // is what gets stored in additionalProperties.
+        List<ConfigurationDto> autoPublishOptions = Arrays.asList(
+            new ConfigurationDto("false", "Disabled — leave discovered APIs in CREATED",
+                "labelOnly", "", "", false, false, Collections.emptyList(), false),
+            new ConfigurationDto("true", "Enabled — publish discovered APIs to the Dev Portal",
+                "labelOnly", "", "", false, false, Collections.emptyList(), false));
         configurationDtoList.add(new ConfigurationDto(HomeGrownConstants.HOMEGROWN_AUTO_PUBLISH,
-            "Auto-publish discovered APIs", "select",
+            "Auto-publish discovered APIs", "options",
             "If enabled, APIs discovered on this gateway are published to the Dev Portal "
                 + "automatically. If disabled, they are left in CREATED for manual review.",
-            "false", false, false, Arrays.asList("true", "false"), false));
+            "false", false, false, autoPublishOptions, false));
 
         return configurationDtoList;
     }
