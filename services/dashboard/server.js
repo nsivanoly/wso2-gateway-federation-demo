@@ -154,16 +154,21 @@ async function buildCatalog() {
     const ops = (detail.operations || []).map((o) => ({ verb: o.verb || o.httpVerb, target: o.target }));
     const primary = ops.find((o) => (o.verb || '').toUpperCase() === 'GET' && !/\{/.test(o.target)) || ops[0] || { verb: 'GET', target: '/' };
     // Match against a live gateway route (external gateways only).
-    const route = envKey !== 'Default' ? findRoute(it.name, it.context) : null;
+    const external = envKey !== 'Default';
+    const deployed = deployments.length > 0;
+    const route = external ? findRoute(it.name, it.context) : null;
     if (route) routeMatched.add(route);
+    // Federation direction for an external-gateway API:
+    //   discovered = on the gateway WITHOUT the connector's managed marker
+    //                (it originated on the gateway; reverse-discovery pulled it in)
+    //   pushed     = any other deployed external API (WSO2 deployed it to the gateway)
+    const discovered = !!route && !route.managed;
+    const pushed = external && deployed && !discovered;
     return {
       id: it.id, name: it.name, version: it.version, context: it.context,
-      deployed: deployments.length > 0,
+      deployed,
       isTemplate: TEMPLATE_NORMS.has(norm(it.name)),
-      // "discovered by WSO2" = present on the gateway runtime AND not pushed by
-      // the connector (no managed marker) -> it originated on the gateway and
-      // reverse-discovery pulled it into WSO2.
-      discovered: !!route && !route.managed,
+      discovered, pushed,
       gateway: { key: envKey, label: gw.label, badge: gw.badge, kind: gw.kind },
       backend: { display: displayBackend(backendInternal), internal: backendInternal },
       gatewayBase: { display: gw.external + it.context + (gw.versioned ? '/v1' : '') },
