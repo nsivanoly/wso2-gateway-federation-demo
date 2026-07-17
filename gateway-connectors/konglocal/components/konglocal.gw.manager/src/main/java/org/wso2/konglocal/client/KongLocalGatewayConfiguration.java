@@ -35,6 +35,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -83,10 +84,10 @@ public class KongLocalGatewayConfiguration implements GatewayAgentConfiguration 
                 false,
                 Collections.emptyList(), false));
         configurationDtoList.add(new ConfigurationDto(KongLocalConstants.KONGLOCAL_AUTO_PUBLISH,
-            "Auto-publish discovered APIs", "checkbox",
+            "Auto-publish discovered APIs", "select",
             "If enabled, APIs discovered on this gateway are published to the Dev Portal "
                 + "automatically. If disabled, they are left in CREATED for manual review.",
-            "false", false, false, Collections.emptyList(), false));
+            "false", false, false, Arrays.asList("true", "false"), false));
 
         return configurationDtoList;
     }

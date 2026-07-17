@@ -91,10 +91,10 @@ public class HomeGrownGatewayConfiguration implements GatewayAgentConfiguration 
                 false,
                 Collections.emptyList(), false));
         configurationDtoList.add(new ConfigurationDto(HomeGrownConstants.HOMEGROWN_AUTO_PUBLISH,
-            "Auto-publish discovered APIs", "checkbox",
+            "Auto-publish discovered APIs", "select",
             "If enabled, APIs discovered on this gateway are published to the Dev Portal "
                 + "automatically. If disabled, they are left in CREATED for manual review.",
-            "false", false, false, Collections.emptyList(), false));
+            "false", false, false, Arrays.asList("true", "false"), false));
 
         return configurationDtoList;
     }
