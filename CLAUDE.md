@@ -1,652 +1,147 @@
 # CLAUDE.md
 
-# WSO2 API Platform v4.7.0+ Gateway Federation Demo
+Project guidance for Claude Code (and any engineer) working in this repo. This is
+the authoritative current-state summary; deeper detail lives in
+[README.md](README.md) and [docs/](docs/).
 
-> **Implementation note.** This document is the original design brief. The built
-> implementation evolved in one respect: the conceptual *translation adapter*
-> service (referenced below as "Adapter Service / Port 3002") is **not** a
-> separate service. Its role — translating WSO2 API metadata into a third-party
-> gateway's format and deploying it — is performed **inside the control plane by
-> the HomeGrown gateway connector**, which pushes directly to the mock gateway's
-> `/mock/deploy`. There is no `:3002` adapter and no `adapter/` directory. For the
-> authoritative current-state architecture and layout, see
-> [README.md](README.md) and [docs/architecture.md](docs/architecture.md).
+## What this is
 
-## Objective
+A self-contained, one-command Docker Compose demo of **WSO2 API Platform 4.7.0
+Gateway Federation**. A single WSO2 control plane governs **six APIs** and
+federates each to a *different kind* of runtime gateway, proving heterogeneous
+gateways can coexist under one control plane while each hosts only its own APIs.
 
-Build a self-contained Proof of Concept (PoC) demonstrating the new **Gateway Federation** capability introduced in **WSO2 API Platform v4.7.0+**.
+It is a **demo/PoC**, not production software. Optimise for clarity of the
+federation story and a clean one-command run. Do **not** add business features.
 
-The objective is **not** to showcase API development, authentication, or gateway features individually.
-
-The objective is to clearly demonstrate that:
-
-- WSO2 API Platform operates as a centralized **Control Plane**
-- Multiple heterogeneous gateways can participate as independent **Data Planes**
-- Configuration distribution differs depending on gateway type
-- Native WSO2 federation and third-party gateway federation can coexist simultaneously
-- APIs remain deployed only to their intended runtime
-
-This demo should be simple enough to run locally using Docker Compose while clearly illustrating enterprise federation concepts.
-
----
-
-# Demo Architecture
-
-The demo contains three runtime groups.
+## Architecture
 
 ```
-                    +--------------------------------+
-                    | WSO2 API Platform 4.7 Control  |
-                    |                                |
-                    | Publisher                      |
-                    | Dev Portal                     |
-                    | Admin                          |
-                    | Key Manager                    |
-                    +---------------+----------------+
-                                    |
-                     API Metadata / Federation
-                                    |
-        ---------------------------------------------------------
-        |                         |                            |
-        |                         |                            |
-        ▼                         ▼                            ▼
-
- +----------------+     +----------------------+     +----------------------+
- | WSO2 GW  |     | Kong Gateway         |     | Mock Third Party GW  |
- | (Option A)     |     | Native Federation    |     | Custom Adapter       |
- +----------------+     +----------------------+     +----------------------+
-                                                |
-                                                |
-                                     Translation Service
-                                            Port 3002
+        WSO2 API Platform 4.7.0 control plane (Publisher/DevPortal/Admin/KM)
+                          https://localhost:9443
+                                   │
+        ┌──────────────────────────┼───────────────────────────┐
+        ▼                          ▼                            ▼
+  WSO2 Gateway (native)     Kong Gateway                 Mock Third-Party GW
+  built into the CP :8243   (KongLocal connector)        (HomeGrown connector)
+   Employee, Leave          Vehicle, Parking :8000       Citizen, Payment :8090
 ```
 
----
+| Gateway env | Federation mechanism | APIs | Serves at |
+|-------------|----------------------|------|-----------|
+| `Default` | native WSO2 synapse gateway (in the CP image) | Employee, Leave | `/<context>` |
+| `Kong` | `KongLocal` connector → Kong Admin API | Vehicle, Parking | `/<context>/v1/<resource>` |
+| `ThirdParty` | `HomeGrown` connector → mock gateway `/mock/deploy` | Citizen, Payment | `/<context>/v1/<resource>` |
 
-# Gateway Types
-
-## Control Plane
-
-WSO2 API Platform 4.7.x
-
-Responsibilities
-
-- API Publisher
-- Developer Portal
-- API Lifecycle
-- API Products
-- Policies
-- Application Management
-- Subscription Management
-- Global Governance
-
-No application traffic should pass through the Control Plane.
-
----
-
-## Option A
-
-### WSO2 Gateway
-
-Represents a centralized shared runtime.
-
-Characteristics
-
-- Native WSO2 runtime
-- Receives deployments directly from Control Plane
-- Executes APIs locally
-- Demonstrates official WSO2 gateway federation
-
----
-
-## Option B
-
-### Kong Gateway
-
-Represents an agency-managed runtime.
-
-Characteristics
-
-- Native Gateway Federation support
-- Receives deployments directly
-- Synchronizes APIs from Control Plane
-- No custom adapter required
-
----
-
-## Option C
-
-### Mock Third-Party Gateway
-
-Represents any unsupported API Gateway.
-
-Examples
-
-- NGINX
-- APISIX
-- Gravitee
-- Mule
-- Apigee
-- Azure APIM
-- AWS API Gateway
-- Custom Gateway
-
-Since WSO2 has no native connector for these platforms, federation is demonstrated using a custom translation layer.
-
----
-
-# Third Party Federation Flow
+## Repository layout
 
 ```
-WSO2 Control Plane
-
-      |
-
-Export API Metadata
-
-(api.yaml)
-
-      |
-
-HTTP POST
-
-      |
-
-Adapter Service
-
-localhost:3002
-
-      |
-
-Translate
-
-api.yaml
-
-↓
-
-Target Gateway REST API
-
-↓
-
-Deploy API
-
-↓
-
-Runtime Ready
+control-plane/          WSO2 image build (bakes in connectors; injects gateway types)
+gateway-connectors/     custom connectors (OSGi bundle Maven projects)
+  homegrown/            -> mock third-party gateway (type HomeGrown)
+  konglocal/            -> Kong Admin API           (type KongLocal)
+services/
+  backend/              unified mock backend for every "original" upstream (backend:8080)
+  mock-gateway/         mock third-party gateway + admin console (:8090)
+  dashboard/            live federation console (:3000)
+provisioning/           provision.sh -> deploy-apis.sh (pure REST) + openapi/
+docs/                   architecture.md, federation-semantics.md, index
+docker-compose.yml · start.sh · stop.sh · .env.sample · .gitignore
+back/                   parked reference files (gitignored; safe to delete)
 ```
 
-The adapter is intentionally lightweight.
+Every top-level component has its own README. `back/`, `.env`, `bin/`, build
+artifacts (`**/target/`, `*.jar`) are gitignored.
 
-Its responsibility is only to:
+## Running
 
-- receive metadata
-- parse api.yaml
-- convert into gateway-specific format
-- invoke mock deployment APIs
-
-No actual gateway implementation is required.
-
----
-
-# APIs
-
-To clearly demonstrate federation, every gateway owns a unique API set.
-
-**Do NOT deploy the same API to multiple gateways.**
-
----
-
-## WSO2 Gateway
-
-### Employee API
-
-Base Path
-
-```
-/employee
+```bash
+./start.sh     # first run: prereqs -> .env from .env.sample -> build JARs+images -> up -> REST provisioning
+./stop.sh      # graceful stop (data preserved) by default; options to wipe volumes/images
 ```
 
-Endpoints
-
-```
-GET /employees
-
-GET /employees/{id}
-
-POST /employees
-```
-
----
-
-### Leave API
-
-Base Path
-
-```
-/leave
-```
-
-Endpoints
-
-```
-GET /leave
-
-POST /leave
-
-DELETE /leave/{id}
-```
-
----
-
-## Kong Gateway
-
-### Vehicle API
-
-Base Path
-
-```
-/vehicle
-```
-
-Endpoints
-
-```
-GET /vehicles
-
-GET /vehicles/{id}
-
-POST /vehicles
-```
-
----
-
-### Parking API
-
-Base Path
-
-```
-/parking
-```
-
-Endpoints
-
-```
-GET /parking
-
-POST /parking
-
-DELETE /parking/{id}
-```
-
----
-
-## Third Party Gateway
-
-### Citizen API
-
-Base Path
-
-```
-/citizen
-```
-
-Endpoints
-
-```
-GET /citizens
-
-GET /citizens/{id}
-
-POST /citizens
-```
-
----
-
-### Payment API
-
-Base Path
-
-```
-/payment
-```
-
-Endpoints
-
-```
-GET /payments
-
-POST /payments
-
-GET /payments/{id}
-```
-
----
-
-# Demo Sequence
-
-## Step 1
-
-Start all containers.
-
----
-
-## Step 2
-
-Open Publisher.
-
-Create six APIs.
-
----
-
-## Step 3
-
-Deploy
-
-Employee API
-
-↓
-
-WSO2 GW
-
----
-
-Deploy
-
-Leave API
-
-↓
-
-WSO2 GW
-
----
-
-Deploy
-
-Vehicle API
-
-↓
-
-Kong Gateway
-
----
-
-Deploy
-
-Parking API
-
-↓
-
-Kong Gateway
-
----
-
-Deploy
-
-Citizen API
-
-↓
-
-Third Party Gateway
-
----
-
-Deploy
-
-Payment API
-
-↓
-
-Third Party Gateway
-
----
-
-## Step 4
-
-Observe
-
-WSO2 Gateway receives deployment natively.
-
----
-
-Observe
-
-Kong receives federation natively.
-
----
-
-Observe
-
-Third Party Adapter receives
-
-```
-api.yaml
-```
-
-Translate
-
-↓
-
-Mock deployment
-
-↓
-
-Gateway updated
-
----
-
-## Step 5
-
-Invoke APIs
-
-Each gateway exposes only its own APIs.
-
-Example
-
-WSO2 Gateway
-
-```
-GET /employee/employees
-
-GET /leave
-```
-
-Kong
-
-```
-GET /vehicle/vehicles
-
-GET /parking
-```
-
-Third Party
-
-```
-GET /citizen/citizens
-
-GET /payment/payments
-```
-
-No API should appear on any other gateway.
-
----
-
-# Mock Adapter
-
-Port
-
-```
-3002
-```
-
-Responsibilities
-
-- Receive deployment notification
-- Accept api.yaml
-- Parse metadata
-- Simulate translation
-- Generate gateway payload
-- Deploy to mock gateway
-- Return success
-
-Example log
-
-```
-Received API:
-
-Citizen API
-
-Version:
-
-v1
-
-Converting api.yaml
-
-↓
-
-Mock Third Party Format
-
-↓
-
-Deploy Successful
-```
-
----
-
-# Suggested Repository Layout
-
-```
-gateway-federation-demo/
-│
-├── control-plane/              # WSO2 image build (bakes in connectors; injects gateway types)
-│   └── Dockerfile
-│
-├── gateway-connectors/         # custom WSO2 gateway connectors (OSGi bundle Maven projects)
-│   ├── homegrown/              #   -> mock third-party gateway (HomeGrown type)
-│   └── konglocal/              #   -> Kong Admin API           (KongLocal type)
-│
-├── services/                   # runtime Node services
-│   ├── backend/                #   unified mock backend for every "original" upstream
-│   ├── mock-gateway/           #   mock third-party gateway + admin console
-│   └── dashboard/              #   live federation console
-│
-├── provisioning/               # one-shot federation wiring
-│   ├── provision.sh            #   waits for services, then runs deploy-apis.sh
-│   ├── deploy-apis.sh          #   creates/publishes/deploys the six APIs
-│   └── openapi/                #   OpenAPI specs for the six APIs
-│
-├── docs/                       # architecture & federation semantics
-├── back/                       # parked files (reference only; safe to delete)
-│
-├── docker-compose.yml
-├── .env.sample                 # every configurable value (copied to .env on first run)
-├── start.sh
-├── stop.sh
-└── README.md
-```
-
-> Note: the native WSO2 gateway is built into the control-plane image (no separate
-> `wso2-gateway/`), and Kong runs from the stock `kong:3.7` image via Compose (no
-> `kong-gateway/` build dir). The third-party gateway needs no adapter shim — the
-> HomeGrown connector federates it directly.
-
----
-
-# start.sh
-
-Interactive startup script.
-
-```
-⚙️ Choose build option
-
-1) Build with cache
-
-2) Build without cache
-
-3) Skip build
-   (default)
-
-------------------------------------------------
-
-🧹 Choose cleanup option before starting
-
-1) Clean start
-   Remove containers
-   Remove volumes
-
-2) Keep existing
-   (default)
-
-3) Exit
-
-------------------------------------------------
-
-Starting services...
-
-✓ Control Plane
-
-✓ WSO2 Gateway
-
-✓ Kong Gateway
-
-✓ Third Party Gateway
-
-✓ Adapter
-
-✓ Backend APIs
-
-Demo Ready
-```
-
----
-
-# stop.sh
-
-Interactive shutdown script.
-
-```
-Choose shutdown option
-
-1) Graceful stop only
-   (default)
-
-   Preserves all data
-
-2) Stop and remove volumes
-
-   Wipes application databases
-
-3) Full cleanup
-
-   Stops containers
-
-   Removes volumes
-
-   Removes images
-```
-
----
-
-# Technologies
-
-- WSO2 API Platform 4.7.x
-- WSO2 Gateway
-- Kong Gateway
-- Docker Compose
-- Node.js (Mock APIs)
-- Node.js Adapter Service
-- REST APIs
-- YAML Metadata Translation
-
----
-
-# Success Criteria
-
-The PoC is considered successful when:
-
-- Single WSO2 Control Plane manages all APIs.
-- WSO2 GW receives deployments through native federation.
-- Kong Gateway receives deployments through native federation.
-- Third-party gateway receives translated metadata through the custom adapter.
-- Every gateway hosts a unique set of APIs with no duplication.
-- API invocation succeeds independently through each gateway.
-- The adapter logs the metadata translation process, demonstrating vendor-agnostic extensibility.
+`start.sh` is idempotent and self-healing: it re-runs federation wiring only if a
+gateway isn't already serving. Consoles: dashboard `:3000`, Publisher/DevPortal
+`:9443`, mock-gateway `:8090`, Kong Manager `:8002`. Creds `admin/admin`.
+
+## Key concepts & how it actually works
+
+- **Custom gateway connectors** are OSGi bundles baked into the CP image's
+  `repository/components/dropins/`. Each registers three SPI services:
+  `GatewayAgentConfiguration` (declares the type + env config fields),
+  `GatewayDeployer` (push: deploy/undeploy), `FederatedAPIDiscovery` (pull:
+  reverse discovery). Packages: `org.wso2.homegrown.client`,
+  `org.wso2.konglocal.client`. Built against APIM `9.32.74`, JDK 11 source level.
+- **Two things make a custom type usable:** (1) the bundle in `dropins/`, and
+  (2) the type in the `[apim] gateway_type` allowlist in `deployment.toml`.
+  `control-plane/Dockerfile` **injects** `HomeGrown,KongLocal` into the stock
+  toml in place via `sed` (no full-file replacement, no committed encryption key).
+- **Federated env must be `provider: external`** — that's what makes revision
+  deployments dispatch to the connector instead of the internal synapse gateway.
+  APIs must be created with `gatewayVendor: external` + `gatewayType: <type>`
+  (both immutable after creation).
+- **Provisioning is pure REST** (`provisioning/deploy-apis.sh`, curl + jq): create
+  via `POST /apis/import-openapi`, deploy a revision, publish. **No apictl / no
+  CLI.** Idempotent (upsert env, detect existing APIs, skip already-deployed).
+- **Unified backend:** one `services/backend` image serves every collection by
+  inferring it from the path (drops `/v1`), reached in-cluster as `backend:8080`.
+- **Managed markers** let discovery skip connector-pushed routes (avoid loops):
+  Kong service tag `wso2-apim-managed`; mock gateway `managedBy` field.
+- **auto_publish** env option (both connectors, `type: options` dropdown, default
+  `false`): controls the lifecycle discovered APIs land in — `false` → `CREATED`
+  (review then publish), `true` → `PUBLISHED` (straight to Dev Portal). Applied in
+  `discoverAPI()` via `api.setStatus(...)`, which the framework honors.
+- **Dashboard** reads WSO2 **and** the live gateway runtimes, labelling each
+  external API **⇈ pushed / ⇩ discovered / ⧗ pending discovery**. Its template
+  deploys go **directly to the gateway** (no marker) so discovery imports them.
+
+See [docs/federation-semantics.md](docs/federation-semantics.md) for the full
+push/pull, lifecycle, and discovery behaviour.
+
+## Working in this repo
+
+- **Change a Node service** (`services/*`): `docker compose up -d --build <svc>`
+  (`backend`, `mock-gateway`, `dashboard`).
+- **Change a connector** (`gateway-connectors/*`): rebuild the JAR, then rebuild
+  the control-plane image (`docker compose build control-plane`) and recreate it.
+  Build options:
+  - local Maven (fast; this machine has JDK 26 + a populated `~/.m2`):
+    `cd gateway-connectors/<c> && mvn -q -B -pl components/<c>.gw.manager -am package -DskipTests`
+  - or Maven-in-Docker (see connector READMEs). A stale `target/*.jar` is reused —
+    delete it (or rebuild) to pick up source changes.
+- **Config** is in `.env` (from `.env.sample`); never commit `.env`. Compose uses
+  `${VAR:-default}` throughout.
+- **Verify** after changes by driving the real flow: `./start.sh` (or targeted
+  `docker compose ...`), then curl each gateway and check the dashboard catalog.
+  Clean up any test APIs/routes afterwards to keep the demo pristine.
+
+## Known gotchas
+
+- **No persistent volumes** for WSO2 (H2 in-container) or Kong (Postgres, no named
+  volume); the mock-gateway registry is **in-memory**. Recreating those containers
+  (or a Colima/VM restart) loses state → re-run provisioning.
+- **Discovery lock:** editing a gateway env via the Admin API mid-discovery can
+  orphan the lock in `AM_TASK_LOCK`; discovery silently stalls. Fix: restart the
+  control plane (`docker compose restart control-plane` — preserves H2).
+- **First cold connector build** downloads WSO2 deps (slow); the Maven cache
+  volume `gateway-federation-m2` (Docker) or `~/.m2` (local) makes reruns fast.
+- **Admin UI field types:** gateway-env config fields honor `type: "options"`
+  (dropdown) — not `select`/`checkbox` (those fall back to a text box). The
+  options widget doesn't pre-select from `defaultValue`; the connector default
+  still applies when unset.
+- **Colima** is the Docker backend here; if `docker` is down, `colima start`.
+
+## Conventions
+
+- Do not reintroduce apictl, per-service backends, `working/`, `third-party/`, or a
+  wholesale `deployment.toml` mount — these were deliberately removed.
+- Keep the six-API / three-gateway story intact; each API lives on exactly one
+  gateway. Don't deploy the same API to multiple gateways.
+- Update the relevant README/docs when behaviour changes; keep `.env.sample`
+  complete.
+
+## Environment notes
+
+- Repo: `git@github.com:nsivanoly/wso2-gateway-federation-demo.git` (branch `main`).
+- Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+- The 4.7.0-alpine base bundles Java 25; connectors build with JDK 11 source level.
