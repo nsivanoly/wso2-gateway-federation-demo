@@ -96,7 +96,7 @@ public class HomeGrownGatewayConfiguration implements GatewayAgentConfiguration 
         // and fall back to a text box. The selected option's name ("true"/"false")
         // is what gets stored in additionalProperties.
         List<ConfigurationDto> autoPublishOptions = Arrays.asList(
-            new ConfigurationDto("false", "Disabled — leave discovered APIs in CREATED",
+            new ConfigurationDto("false", "Disabled (default) — leave discovered APIs in CREATED",
                 "labelOnly", "", "", false, false, Collections.emptyList(), false),
             new ConfigurationDto("true", "Enabled — publish discovered APIs to the Dev Portal",
                 "labelOnly", "", "", false, false, Collections.emptyList(), false));
