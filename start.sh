@@ -7,6 +7,10 @@
 #   Later runs: reuses .env, skips one-time setup, and just starts the stack
 #               (federation wiring is self-healing and only re-runs if needed).
 #
+# The connector build cache (Maven cache volume + compiled JARs) is preserved
+# across runs and is only ever removed if you explicitly opt in during a clean
+# start — a cold connector rebuild is slow, so it is never wiped by surprise.
+#
 # Safe to run repeatedly (idempotent).
 # ============================================================================
 set -uo pipefail
@@ -16,10 +20,16 @@ cd "$SCRIPT_DIR"
 
 MARKER=".demo-initialized"
 COMPOSE="docker compose"
+M2_VOLUME="gateway-federation-m2"
+CONNECTOR_TARGETS=(
+  "gateway-connectors/homegrown/components/homegrown.gw.manager/target"
+  "gateway-connectors/konglocal/components/konglocal.gw.manager/target"
+)
 
 # ---- output helpers ----------------------------------------------------------
 c_ok(){   printf "  \033[32m✓\033[0m %s\n" "$1"; }
 c_wait(){ printf "  \033[33m…\033[0m %s\n" "$1"; }
+c_info(){ printf "  \033[36m•\033[0m %s\n" "$1"; }
 c_err(){  printf "  \033[31m✗\033[0m %s\n" "$1"; }
 hr(){ echo "------------------------------------------------------------"; }
 ask(){ # prompt default -> echoes the answer (default when non-interactive)
@@ -27,8 +37,21 @@ ask(){ # prompt default -> echoes the answer (default when non-interactive)
   if [ -t 0 ]; then read -r -p "$prompt" ans || true; fi
   echo "${ans:-$def}"
 }
+yesish(){ case "$1" in [Yy]|[Yy][Ee][Ss]) return 0;; *) return 1;; esac; }
+
+clean_connector_build(){
+  local removed=0
+  for t in "${CONNECTOR_TARGETS[@]}"; do
+    if [ -d "$t" ]; then rm -rf "$t" && removed=1; fi
+  done
+  docker volume rm "$M2_VOLUME" >/dev/null 2>&1 && removed=1 || true
+  [ "$removed" = 1 ] && c_ok "Connector build cache removed — will rebuild from scratch" \
+                     || c_info "No connector build cache present"
+}
 
 # ---- 1. prerequisites --------------------------------------------------------
+echo "🚀 WSO2 Gateway Federation demo — startup"
+hr
 echo "Checking prerequisites..."
 command -v docker >/dev/null 2>&1 || { c_err "docker not found — install Docker Desktop / Engine"; exit 1; }
 docker compose version >/dev/null 2>&1 || { c_err "docker compose v2 not found"; exit 1; }
@@ -38,39 +61,48 @@ c_ok "Docker and Docker Compose available"
 # ---- 2. environment file (generate from sample on first run) -----------------
 if [ ! -f .env ]; then
   cp .env.sample .env
-  c_ok ".env created from .env.sample (using default values — edit .env to customise)"
+  c_ok ".env created from .env.sample (defaults applied — edit .env to customise)"
 else
   c_ok ".env found — reusing existing configuration"
 fi
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
 
-# ---- build option ------------------------------------------------------------
+# ---- 3. cleanup option -------------------------------------------------------
 hr
-echo "⚙️  Choose build option"
+echo "🧹 Start from a clean slate?"
+echo "   1) Keep existing (default)  — resume the current stack and data"
+echo "   2) Clean start              — remove containers + volumes, re-provision"
+echo "   3) Exit"
+case "$(ask "Select [1/2/3] (default 1): " 1)" in
+  2)
+    c_wait "Removing containers and volumes..."
+    $COMPOSE --profile init down -v --remove-orphans >/dev/null 2>&1 || true
+    rm -f "$MARKER"
+    c_ok "Containers and volumes removed"
+    # The connector build cache is independent of app state — keep it by default.
+    CLEAN_BUILD=$(ask "Also rebuild connectors from scratch (remove Maven cache + JARs)? [y/N]: " n)
+    yesish "$CLEAN_BUILD" && clean_connector_build \
+                          || c_info "Connector build cache kept — reusing built JARs"
+    ;;
+  3) echo "Bye."; exit 0 ;;
+  *) c_info "Keeping existing containers, volumes, and build cache" ;;
+esac
+
+# ---- 4. build option ---------------------------------------------------------
+hr
+echo "⚙️  Image build option"
 echo "   1) Build with cache"
 echo "   2) Build without cache"
-echo "   3) Skip build (default)"
+echo "   3) Skip build (default) — reuse existing images"
 case "$(ask "Select [1/2/3] (default 3): " 3)" in
   1) BUILD_FLAGS="--build" ;;
   2) BUILD_FLAGS="--build --no-cache" ;;
   *) BUILD_FLAGS="" ;;
 esac
-
-# ---- cleanup option ----------------------------------------------------------
-hr
-echo "🧹 Choose cleanup option before starting"
-echo "   1) Clean start (remove containers + volumes, re-initialize)"
-echo "   2) Keep existing (default)"
-echo "   3) Exit"
-case "$(ask "Select [1/2/3] (default 2): " 2)" in
-  1) c_wait "Removing containers and volumes..."; $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; rm -f "$MARKER" ;;
-  3) echo "Bye."; exit 0 ;;
-  *) : ;;
-esac
 hr
 
-# ---- 3. build the custom gateway connector JARs (once, cached) ---------------
+# ---- 5. build the custom gateway connector JARs (once, cached) ---------------
 # The control-plane image bakes these OSGi bundles into dropins/ at image-build
 # time. We build them here only if the JAR is missing, using a persistent Maven
 # cache volume (gateway-federation-m2) so the first run is a one-off.
@@ -78,7 +110,7 @@ build_connector() { # dir module jarglob label
   local dir=$1 module=$2 jarglob=$3 label=$4
   if ls "$dir"/$jarglob >/dev/null 2>&1; then c_ok "$label connector JAR present"; return; fi
   c_wait "Building $label connector (first time only; Maven cache persists)..."
-  if docker run --rm -v "$PWD/$dir":/build -v gateway-federation-m2:/root/.m2 -w /build \
+  if docker run --rm -v "$PWD/$dir":/build -v "$M2_VOLUME":/root/.m2 -w /build \
        maven:3.9-eclipse-temurin-11 mvn -q -B -pl "$module" -am package -DskipTests >/dev/null 2>&1; then
     c_ok "$label connector built"
   else
@@ -91,14 +123,14 @@ build_connector "gateway-connectors/konglocal" "components/konglocal.gw.manager"
   "components/konglocal.gw.manager/target/konglocal.gw.manager-*.jar" KongLocal
 hr
 
-# ---- 4. bring up runtime services (the init profile is excluded by default) --
+# ---- 6. bring up runtime services (the init profile is excluded by default) --
 echo "Starting services..."
 # shellcheck disable=SC2086
 $COMPOSE up -d $BUILD_FLAGS \
   backend control-plane kong-database kong-migrations kong mock-gateway dashboard >/dev/null 2>&1
 c_ok "Containers started"
 
-# ---- 5. readiness ------------------------------------------------------------
+# ---- 7. readiness ------------------------------------------------------------
 wait_http(){ # label url expected-code-glob
   local label=$1 url=$2 want=$3 i=0 code
   while :; do
@@ -116,7 +148,7 @@ wait_http "WSO2 control plane"  "https://localhost:${CONTROL_PLANE_HTTPS_PORT:-9
 wait_http "Dashboard"           "http://localhost:${DASHBOARD_PORT:-3000}/api/health"                    "200"
 hr
 
-# ---- 6. federation wiring (idempotent, self-healing) -------------------------
+# ---- 8. federation wiring (idempotent, self-healing) -------------------------
 # Authoritative readiness: is every gateway already serving its own APIs? This
 # survives container recreation / volume loss, unlike a bare marker file.
 code(){ curl -sk -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || echo 000; }
@@ -147,7 +179,7 @@ done
 federation_ready && c_ok "All gateways serving their APIs"
 hr
 
-# ---- 7. summary --------------------------------------------------------------
+# ---- 9. summary --------------------------------------------------------------
 cat <<EOF
 ✅ Demo Ready
 

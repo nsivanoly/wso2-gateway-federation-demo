@@ -105,7 +105,13 @@ Interactive, defaulting to a **graceful stop that preserves all data**:
 2. **Stop + remove volumes** — wipes application state (re-initializes next start).
 3. **Full cleanup** — stops, removes volumes **and** images built by this demo.
 
-A plain `./stop.sh` never removes user data or configuration.
+The **connector build cache** (the Maven cache volume `gateway-federation-m2` and
+the compiled connector JARs) is a separate, expensive-to-rebuild artifact. It is
+**always preserved by default**; options 2 and 3 ask a distinct `y/N` question
+before touching it, so a cleanup never triggers a slow cold connector rebuild
+unless you opt in. `start.sh`'s **Clean start** asks the same question.
+
+A plain `./stop.sh` never removes user data, configuration, or the build cache.
 
 ---
 
@@ -153,7 +159,8 @@ customise. **`.env` is never committed.**
   re-run `./start.sh` with a build option — `start.sh` rebuilds missing JARs and the
   control-plane image bakes them in. (A stale JAR is reused, so the delete is
   required to pick up source changes.)
-- **Re-wire federation from scratch:** `./start.sh` → cleanup option **1**.
+- **Re-wire federation from scratch:** `./start.sh` → **Clean start** (option **2**);
+  answer `y` to the connector-rebuild prompt only if you changed a connector.
 
 ---
 
